@@ -85,9 +85,9 @@ fn complete_line<H: Helper>(
         unbounded, Skim, SkimItem, SkimItemReceiver, SkimItemSender, SkimOptionsBuilder,
     };
 
-    let completer = s.helper.unwrap();
+    // let completer = &s.helper;
     // get a list of completions
-    let (start, candidates) = completer.complete(&s.line, s.line.pos(), &s.ctx)?;
+    let (start, candidates) = s.helper.complete(&s.line, s.line.pos(), &s.ctx)?;
     // if no completions, we are done
     if candidates.is_empty() {
         s.out.beep()?;
@@ -109,7 +109,8 @@ fn complete_line<H: Helper>(
                 } else {
                     Borrowed(candidate)
                 };*/
-                completer.update(&mut s.line, start, candidate, &mut s.changes);
+                s.helper
+                    .update(&mut s.line, start, candidate, &mut s.changes);
             } else {
                 // Restore current edited line
                 s.line.update(&backup, backup_pos, &mut s.changes);
@@ -152,7 +153,7 @@ fn complete_line<H: Helper>(
         if let Some(lcp) = longest_common_prefix(&candidates) {
             // if we can extend the item, extend it
             if lcp.len() > s.line.pos() - start || candidates.len() == 1 {
-                completer.update(&mut s.line, start, lcp, &mut s.changes);
+                s.helper.update(&mut s.line, start, lcp, &mut s.changes);
                 s.refresh_line()?;
             }
         }
@@ -247,7 +248,7 @@ fn complete_line<H: Helper>(
                         .downcast_ref::<Candidate>() // downcast to concrete type
                         .expect("something wrong with downcast");
                     if let Some(candidate) = candidates.get(item.index) {
-                        completer.update(
+                        s.helper.update(
                             &mut s.line,
                             start,
                             candidate.replacement(),
@@ -337,11 +338,15 @@ fn page_completions<C: Candidate, H: Helper>(
             if i < candidates.len() {
                 let candidate = &candidates[i].display();
                 let width = candidate.width();
-                if let Some(highlighter) = s.highlighter() {
-                    ab.push_str(&highlighter.highlight_candidate(candidate, CompletionType::List));
-                } else {
-                    ab.push_str(candidate);
-                }
+                ab.push_str(
+                    &s.helper
+                        .highlight_candidate(candidate, CompletionType::List),
+                );
+                // if let Some(highlighter) = s.highlighter() {
+                //     ab.push_str(&highlighter.highlight_candidate(candidate, CompletionType::List));
+                // } else {
+                //     ab.push_str(candidate);
+                // }
                 if ((col + 1) * num_rows) + row < candidates.len() {
                     for _ in width..max_width {
                         ab.push(' ');
@@ -482,7 +487,7 @@ fn apply_backspace_direct(input: &str) -> String {
 fn readline_direct(
     mut reader: impl BufRead,
     mut writer: impl Write,
-    validator: &Option<impl Validator>,
+    validator: &mut impl Validator,
 ) -> Result<String> {
     let mut input = String::new();
 
@@ -506,35 +511,36 @@ fn readline_direct(
 
         input = apply_backspace_direct(&input);
 
-        match validator.as_ref() {
-            None => return Ok(input),
-            Some(v) => {
-                let mut ctx = input.as_str();
-                let mut ctx = validate::ValidationContext::new(&mut ctx);
+        // match validator.as_ref() {
+        //     None => return Ok(input),
+        // Some(v) => {
+        let mut ctx = input.as_str();
+        let mut ctx = validate::ValidationContext::new(&mut ctx);
 
-                match v.validate(&mut ctx)? {
-                    validate::ValidationResult::Valid(msg) => {
-                        if let Some(msg) = msg {
-                            writer.write_all(msg.as_bytes())?;
-                        }
-                        return Ok(input);
-                    }
-                    validate::ValidationResult::Invalid(Some(msg)) => {
-                        writer.write_all(msg.as_bytes())?;
-                    }
-                    validate::ValidationResult::Incomplete => {
-                        // Add newline and keep on taking input
-                        if trailing_r {
-                            input.push('\r');
-                        }
-                        if trailing_n {
-                            input.push('\n');
-                        }
-                    }
-                    _ => {}
+        match validator.validate(&mut ctx)? {
+            validate::ValidationResult::Valid(msg) => {
+                if let Some(msg) = msg {
+                    writer.write_all(msg.as_bytes())?;
                 }
+                return Ok(input);
             }
+            validate::ValidationResult::Invalid(Some(msg)) => {
+                writer.write_all(msg.as_bytes())?;
+            }
+            validate::ValidationResult::Incomplete(indent) => {
+                // Add newline and keep on taking input
+                if trailing_r {
+                    input.push('\r');
+                }
+                if trailing_n {
+                    input.push('\n');
+                }
+                input += &" ".repeat(indent);
+            }
+            _ => {}
         }
+        // }
+        // }
     }
 }
 
@@ -546,11 +552,32 @@ pub trait Helper
 where
     Self: Completer + Hinter + Highlighter + Validator,
 {
+    /// Update helper when line has been modified.
+    ///
+    /// This is the first-called function just after the editing is done,
+    /// before all other functions within [Completer], [Hinter], [Highlighter], and [Validator].
+    ///
+    /// You can put the tokenizer/parser here so that other APIs can directly use
+    /// results generate here, and reduce the overhead.
+    fn update_after_edit(&mut self, line: &str, pos: usize, forced_refresh: bool) {
+        _ = (line, forced_refresh, pos);
+    }
+
+    /// Update helper when cursor has been moved.
+    ///
+    /// This is the first-called function just after the cursor moving is done,
+    /// before all other functions within [Completer], [Hinter], [Highlighter], and [Validator].
+    ///
+    /// You can put the tokenizer/parser here so that other APIs can directly use
+    /// results generate here, and reduce the overhead.
+    fn update_after_move_cursor(&mut self, line: &str, pos: usize) {
+        _ = (line, pos);
+    }
 }
 
 impl Helper for () {}
 
-impl<'h, H: Helper> Helper for &'h H {}
+impl<'h, H: Helper> Helper for &'h mut H {}
 
 /// Completion/suggestion context
 pub struct Context<'h> {
@@ -587,7 +614,7 @@ pub struct Editor<H: Helper, I: History> {
     term: Terminal,
     buffer: Option<Buffer>,
     history: I,
-    helper: Option<H>,
+    helper: H,
     kill_ring: KillRing,
     config: Config,
     custom_bindings: Bindings,
@@ -599,19 +626,19 @@ pub type DefaultEditor = Editor<(), DefaultHistory>;
 #[allow(clippy::new_without_default)]
 impl<H: Helper> Editor<H, DefaultHistory> {
     /// Create an editor with the default configuration
-    pub fn new() -> Result<Self> {
-        Self::with_config(Config::default())
+    pub fn new(helper: H) -> Result<Self> {
+        Self::with_config(Config::default(), helper)
     }
 
     /// Create an editor with a specific configuration.
-    pub fn with_config(config: Config) -> Result<Self> {
-        Self::with_history(config, DefaultHistory::with_config(config))
+    pub fn with_config(config: Config, helper: H) -> Result<Self> {
+        Self::with_history(config, DefaultHistory::with_config(config), helper)
     }
 }
 
 impl<H: Helper, I: History> Editor<H, I> {
     /// Create an editor with a custom history impl.
-    pub fn with_history(config: Config, history: I) -> Result<Self> {
+    pub fn with_history(config: Config, history: I, helper: H) -> Result<Self> {
         let term = Terminal::new(
             config.color_mode(),
             config.behavior(),
@@ -624,7 +651,7 @@ impl<H: Helper, I: History> Editor<H, I> {
             term,
             buffer: None,
             history,
-            helper: None,
+            helper,
             kill_ring: KillRing::new(60),
             config,
             custom_bindings: Bindings::new(),
@@ -660,11 +687,12 @@ impl<H: Helper, I: History> Editor<H, I> {
             stdout.write_all(prompt.as_bytes())?;
             stdout.flush()?;
 
-            readline_direct(io::stdin().lock(), io::stderr(), &self.helper)
+            readline_direct(io::stdin().lock(), io::stderr(), &mut self.helper)
         } else if self.term.is_input_tty() {
             let (original_mode, term_key_map) = self.term.enable_raw_mode()?;
             let guard = Guard(&original_mode);
-            let user_input = self.readline_edit(prompt, initial, &original_mode, term_key_map);
+            let user_input: result::Result<String, ReadlineError> =
+                self.readline_edit(prompt, initial, &original_mode, term_key_map);
             if self.config.auto_add_history() {
                 if let Ok(ref line) = user_input {
                     self.add_history_entry(line.as_str())?;
@@ -676,7 +704,7 @@ impl<H: Helper, I: History> Editor<H, I> {
         } else {
             debug!(target: "rustyline", "stdin is not a tty");
             // Not a tty: read from file / pipe.
-            readline_direct(io::stdin().lock(), io::stderr(), &self.helper)
+            readline_direct(io::stdin().lock(), io::stderr(), &mut self.helper)
         }
     }
 
@@ -694,7 +722,7 @@ impl<H: Helper, I: History> Editor<H, I> {
 
         self.kill_ring.reset(); // TODO recreate a new kill ring vs reset
         let ctx = Context::new(&self.history);
-        let mut s = State::new(&mut stdout, prompt, self.helper.as_ref(), ctx);
+        let mut s = State::new(&mut stdout, prompt, &mut self.helper, ctx);
 
         let mut input_state = InputState::new(&self.config, &self.custom_bindings);
 
@@ -729,7 +757,7 @@ impl<H: Helper, I: History> Editor<H, I> {
 
             // First trigger commands that need extra input
 
-            if cmd == Cmd::Complete && s.helper.is_some() {
+            if cmd == Cmd::Complete {
                 let next = complete_line(&mut rdr, &mut s, &mut input_state, &self.config)?;
                 if let Some(next) = next {
                     cmd = next;
@@ -839,18 +867,17 @@ impl<H: Helper, I: History> Editor<H, I> {
 
     /// Register a callback function to be called for tab-completion
     /// or to show hints to the user at the right of the prompt.
-    pub fn set_helper(&mut self, helper: Option<H>) {
-        self.helper = helper;
-    }
+    #[deprecated = "reason"]
+    pub fn set_helper(&mut self) {}
 
     /// Return a mutable reference to the helper.
-    pub fn helper_mut(&mut self) -> Option<&mut H> {
-        self.helper.as_mut()
+    pub fn helper_mut(&mut self) -> &mut H {
+        &mut self.helper
     }
 
     /// Return an immutable reference to the helper.
-    pub fn helper(&self) -> Option<&H> {
-        self.helper.as_ref()
+    pub fn helper(&self) -> &H {
+        &self.helper
     }
 
     /// Bind a sequence to a command.

@@ -54,7 +54,7 @@ pub trait Renderer {
         hint: Option<&str>,
         old_layout: &Layout,
         new_layout: &Layout,
-        highlighter: Option<&H>,
+        highlighter: &mut H,
     ) -> Result<()>;
 
     /// Compute layout for rendering prompt + line + some info (either hint,
@@ -133,7 +133,7 @@ impl<'a, R: Renderer + ?Sized> Renderer for &'a mut R {
         hint: Option<&str>,
         old_layout: &Layout,
         new_layout: &Layout,
-        highlighter: Option<&H>,
+        highlighter: &mut H,
     ) -> Result<()> {
         (**self).refresh_line(prompt, line, hint, old_layout, new_layout, highlighter)
     }

@@ -52,7 +52,7 @@ impl CommandHint {
 impl Hinter for DIYHinter {
     type Hint = CommandHint;
 
-    fn hint(&self, line: &str, pos: usize, _ctx: &Context<'_>) -> Option<CommandHint> {
+    fn hint(&mut self, line: &str, pos: usize, _ctx: &Context<'_>) -> Option<CommandHint> {
         if line.is_empty() || pos < line.len() {
             return None;
         }
@@ -86,8 +86,7 @@ fn main() -> Result<()> {
     println!("This is a DIY hint hack of rustyline");
     let h = DIYHinter { hints: diy_hints() };
 
-    let mut rl: Editor<DIYHinter, DefaultHistory> = Editor::new()?;
-    rl.set_helper(Some(h));
+    let mut rl: Editor<DIYHinter, DefaultHistory> = Editor::new(h)?;
 
     loop {
         let input = rl.readline("> ")?;

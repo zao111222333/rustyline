@@ -986,7 +986,7 @@ impl Renderer for PosixRenderer {
         hint: Option<&str>,
         old_layout: &Layout,
         new_layout: &Layout,
-        highlighter: Option<&H>,
+        highlighter: &mut H,
     ) -> Result<()> {
         use std::fmt::Write;
         self.buffer.clear();
@@ -997,41 +997,41 @@ impl Renderer for PosixRenderer {
 
         self.clear_old_rows(old_layout);
 
-        if let Some(highlighter) = highlighter {
-            // display the prompt
-            self.buffer
-                .push_str(&highlighter.highlight_prompt(prompt, default_prompt));
-            // display the input line
-            cfg_if::cfg_if! {
-                if #[cfg(not(feature = "split-highlight"))] {
-                    self.buffer
-                        .push_str(&highlighter.highlight(line, line.pos()));
-                } else if #[cfg(feature = "ansi-str")] {
-                    self.buffer
-                        .push_str(&highlighter.highlight(line, line.pos()));
-                } else {
-                    use crate::highlight::{Style, StyledBlock};
-                    for sb in highlighter.highlight_line(line, line.pos()) {
-                        let style = sb.style();
-                        write!(self.buffer, "{}", style.start())?;
-                        self.buffer.push_str(sb.text());
-                        write!(self.buffer, "{}", style.end())?;
-                    }
+        // if let Some(highlighter) = highlighter {
+        // display the prompt
+        self.buffer
+            .push_str(&highlighter.highlight_prompt(prompt, default_prompt));
+        // display the input line
+        cfg_if::cfg_if! {
+            if #[cfg(not(feature = "split-highlight"))] {
+                self.buffer
+                    .push_str(&highlighter.highlight(line, line.pos()));
+            } else if #[cfg(feature = "ansi-str")] {
+                self.buffer
+                    .push_str(&highlighter.highlight(line, line.pos()));
+            } else {
+                use crate::highlight::{Style, StyledBlock};
+                for sb in highlighter.highlight_line(line, line.pos()) {
+                    let style = sb.style();
+                    write!(self.buffer, "{}", style.start())?;
+                    self.buffer.push_str(sb.text());
+                    write!(self.buffer, "{}", style.end())?;
                 }
             }
-        } else {
-            // display the prompt
-            self.buffer.push_str(prompt);
-            // display the input line
-            self.buffer.push_str(line);
         }
+        // } else {
+        //     // display the prompt
+        //     self.buffer.push_str(prompt);
+        //     // display the input line
+        //     self.buffer.push_str(line);
+        // }
         // display hint
         if let Some(hint) = hint {
-            if let Some(highlighter) = highlighter {
-                self.buffer.push_str(&highlighter.highlight_hint(hint));
-            } else {
-                self.buffer.push_str(hint);
-            }
+            // if let Some(highlighter) = highlighter {
+            self.buffer.push_str(&highlighter.highlight_hint(hint));
+            // } else {
+            //     self.buffer.push_str(hint);
+            // }
         }
         // we have to generate our own newline on line wrap
         if end_pos.col == 0
@@ -1087,6 +1087,14 @@ impl Renderer for PosixRenderer {
         if pos.col == self.cols {
             pos.col = 0;
             pos.row += 1;
+        }
+        cfg_if::cfg_if! {
+            if #[cfg(feature = "continuation-prompt")] {
+                // add continuation prompt offset
+                if pos.row > orig.row {
+                    pos.col += orig.col;
+                }
+            }
         }
         pos
     }
@@ -1708,14 +1716,29 @@ mod test {
             line.insert('a', out.cols - prompt_size.col + 1, &mut NoListener)
         );
         let new_layout = out.compute_layout(prompt_size, default_prompt, &line, None);
-        assert_eq!(Position { col: 1, row: 1 }, new_layout.cursor);
+        cfg_if::cfg_if! {
+            if #[cfg(feature = "continuation-prompt")] {
+                assert_eq!(Position { col: 3, row: 1 }, new_layout.cursor);
+            } else {
+                assert_eq!(Position { col: 1, row: 1 }, new_layout.cursor);
+            }
+        }
         assert_eq!(new_layout.cursor, new_layout.end);
-        out.refresh_line::<()>(prompt, &line, None, &old_layout, &new_layout, None)
+        out.refresh_line::<()>(prompt, &line, None, &old_layout, &new_layout, &mut ())
             .unwrap();
         #[rustfmt::skip]
-        assert_eq!(
-            "\r\u{1b}[K> aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\r\u{1b}[1C",
-            out.buffer
-        );
+        cfg_if::cfg_if! {
+            if #[cfg(feature = "continuation-prompt")] {
+                assert_eq!(
+                    "\r\u{1b}[K> aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\r\u{1b}[3C",
+                    out.buffer
+                );
+            } else {
+                assert_eq!(
+                    "\r\u{1b}[K> aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\r\u{1b}[1C",
+                    out.buffer
+                );
+            }
+        }
     }
 }

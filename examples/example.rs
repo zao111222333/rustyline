@@ -22,7 +22,7 @@ struct MyHelper {
 
 impl Highlighter for MyHelper {
     fn highlight_prompt<'b, 's: 'b, 'p: 'b>(
-        &'s self,
+        &'s mut self,
         prompt: &'p str,
         default: bool,
     ) -> Cow<'b, str> {
@@ -33,25 +33,25 @@ impl Highlighter for MyHelper {
         }
     }
 
-    fn highlight_hint<'h>(&self, hint: &'h str) -> Cow<'h, str> {
+    fn highlight_hint<'h>(&mut self, hint: &'h str) -> Cow<'h, str> {
         Owned("\x1b[1m".to_owned() + hint + "\x1b[m")
     }
 
     #[cfg(any(not(feature = "split-highlight"), feature = "ansi-str"))]
-    fn highlight<'l>(&self, line: &'l str, pos: usize) -> Cow<'l, str> {
+    fn highlight<'l>(&mut self, line: &'l str, pos: usize) -> Cow<'l, str> {
         self.highlighter.highlight(line, pos)
     }
 
     #[cfg(all(feature = "split-highlight", not(feature = "ansi-str")))]
     fn highlight_line<'l>(
-        &self,
+        &mut self,
         line: &'l str,
         pos: usize,
     ) -> impl Iterator<Item = impl 'l + rustyline::highlight::StyledBlock> {
         self.highlighter.highlight_line(line, pos)
     }
 
-    fn highlight_char(&self, line: &str, pos: usize, forced: bool) -> bool {
+    fn highlight_char(&mut self, line: &str, pos: usize, forced: bool) -> bool {
         self.highlighter.highlight_char(line, pos, forced)
     }
 }
@@ -72,8 +72,7 @@ fn main() -> rustyline::Result<()> {
         colored_prompt: "".to_owned(),
         validator: MatchingBracketValidator::new(),
     };
-    let mut rl = Editor::with_config(config)?;
-    rl.set_helper(Some(h));
+    let mut rl = Editor::with_config(config, h)?;
     rl.bind_sequence(KeyEvent::alt('n'), Cmd::HistorySearchForward);
     rl.bind_sequence(KeyEvent::alt('p'), Cmd::HistorySearchBackward);
     if rl.load_history("history.txt").is_err() {
@@ -82,7 +81,7 @@ fn main() -> rustyline::Result<()> {
     let mut count = 1;
     loop {
         let p = format!("{count}> ");
-        rl.helper_mut().expect("No helper").colored_prompt = format!("\x1b[1;32m{p}\x1b[0m");
+        rl.helper_mut().colored_prompt = format!("\x1b[1;32m{p}\x1b[0m");
         let readline = rl.readline(&p);
         match readline {
             Ok(line) => {

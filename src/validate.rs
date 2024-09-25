@@ -6,8 +6,8 @@ use crate::Result;
 /// Input validation result
 #[non_exhaustive]
 pub enum ValidationResult {
-    /// Incomplete input
-    Incomplete,
+    /// Incomplete input with indent count
+    Incomplete(usize),
     /// Validation fails with an optional error message. User must fix the
     /// input.
     Invalid(Option<String>),
@@ -18,6 +18,14 @@ pub enum ValidationResult {
 impl ValidationResult {
     pub(crate) fn is_valid(&self) -> bool {
         matches!(self, Self::Valid(_))
+    }
+
+    pub(crate) fn is_incomplete(&self) -> Option<usize> {
+        if let Self::Incomplete(indent) = self {
+            Some(*indent)
+        } else {
+            None
+        }
     }
 
     pub(crate) fn has_message(&self) -> bool {
@@ -67,7 +75,7 @@ pub trait Validator {
     ///
     /// For auto-correction like a missing closing quote or to reject invalid
     /// char while typing, the input will be mutable (TODO).
-    fn validate(&self, ctx: &mut ValidationContext) -> Result<ValidationResult> {
+    fn validate(&mut self, ctx: &mut ValidationContext) -> Result<ValidationResult> {
         let _ = ctx;
         Ok(ValidationResult::Valid(None))
     }
@@ -79,19 +87,19 @@ pub trait Validator {
     ///
     /// This feature is not yet implemented, so this function is currently a
     /// no-op
-    fn validate_while_typing(&self) -> bool {
+    fn validate_while_typing(&mut self) -> bool {
         false
     }
 }
 
 impl Validator for () {}
 
-impl<'v, V: ?Sized + Validator> Validator for &'v V {
-    fn validate(&self, ctx: &mut ValidationContext) -> Result<ValidationResult> {
+impl<'v, V: ?Sized + Validator> Validator for &'v mut V {
+    fn validate(&mut self, ctx: &mut ValidationContext) -> Result<ValidationResult> {
         (**self).validate(ctx)
     }
 
-    fn validate_while_typing(&self) -> bool {
+    fn validate_while_typing(&mut self) -> bool {
         (**self).validate_while_typing()
     }
 }
@@ -111,7 +119,7 @@ impl MatchingBracketValidator {
 }
 
 impl Validator for MatchingBracketValidator {
-    fn validate(&self, ctx: &mut ValidationContext) -> Result<ValidationResult> {
+    fn validate(&mut self, ctx: &mut ValidationContext) -> Result<ValidationResult> {
         Ok(validate_brackets(ctx.input()))
     }
 }
@@ -140,6 +148,6 @@ fn validate_brackets(input: &str) -> ValidationResult {
     if stack.is_empty() {
         ValidationResult::Valid(None)
     } else {
-        ValidationResult::Incomplete
+        ValidationResult::Incomplete(0)
     }
 }

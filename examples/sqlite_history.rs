@@ -9,7 +9,7 @@ fn main() -> Result<()> {
         // file
         rustyline::sqlite_history::SQLiteHistory::open(config, "history.sqlite3")?
     };
-    let mut rl: Editor<(), _> = Editor::with_history(config, history)?;
+    let mut rl: Editor<(), _> = Editor::with_history(config, history, ())?;
     loop {
         let line = rl.readline("> ")?;
         println!("{line}");

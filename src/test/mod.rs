@@ -20,7 +20,7 @@ mod vi_insert;
 
 fn init_editor(mode: EditMode, keys: &[KeyEvent]) -> DefaultEditor {
     let config = Config::builder().edit_mode(mode).build();
-    let mut editor = DefaultEditor::with_config(config).unwrap();
+    let mut editor = DefaultEditor::with_config(config, ()).unwrap();
     editor.term.keys.extend(keys.iter().copied());
     editor
 }
@@ -30,7 +30,7 @@ impl Completer for SimpleCompleter {
     type Candidate = String;
 
     fn complete(
-        &self,
+        &mut self,
         line: &str,
         _pos: usize,
         _ctx: &Context<'_>,
@@ -50,7 +50,7 @@ impl Completer for SimpleCompleter {
 impl Hinter for SimpleCompleter {
     type Hint = String;
 
-    fn hint(&self, _line: &str, _pos: usize, _ctx: &Context<'_>) -> Option<Self::Hint> {
+    fn hint(&mut self, _line: &str, _pos: usize, _ctx: &Context<'_>) -> Option<Self::Hint> {
         None
     }
 }
@@ -63,8 +63,8 @@ impl Validator for SimpleCompleter {}
 fn complete_line() {
     let mut out = Sink::default();
     let history = crate::history::DefaultHistory::new();
-    let helper = Some(SimpleCompleter);
-    let mut s = init_state(&mut out, "rus", 3, helper.as_ref(), &history);
+    let mut helper = SimpleCompleter;
+    let mut s = init_state(&mut out, "rus", 3, &mut helper, &history);
     let config = Config::default();
     let bindings = Bindings::new();
     let mut input_state = InputState::new(&config, &bindings);
@@ -85,8 +85,8 @@ fn complete_line() {
 fn complete_symbol() {
     let mut out = Sink::default();
     let history = crate::history::DefaultHistory::new();
-    let helper = Some(SimpleCompleter);
-    let mut s = init_state(&mut out, "\\hbar", 5, helper.as_ref(), &history);
+    let mut helper = SimpleCompleter;
+    let mut s = init_state(&mut out, "\\hbar", 5, &mut helper, &history);
     let config = Config::builder()
         .completion_type(CompletionType::List)
         .build();
@@ -188,7 +188,7 @@ fn test_readline_direct() {
     let output = readline_direct(
         Cursor::new("([)\n\u{0008}\n\n\r\n])".as_bytes()),
         Cursor::new(&mut write_buf),
-        &Some(crate::validate::MatchingBracketValidator::new()),
+        &mut crate::validate::MatchingBracketValidator::new(),
     );
 
     assert_eq!(

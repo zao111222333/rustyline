@@ -133,6 +133,7 @@ pub fn execute<H: Helper>(
         Cmd::AcceptLine | Cmd::AcceptOrInsertLine { .. } => {
             let validation_result = s.validate()?;
             let valid = validation_result.is_valid();
+            let incomplete = validation_result.is_incomplete();
             let end = s.line.is_end_of_input();
             match (cmd, valid, end) {
                 (Cmd::AcceptLine, ..)
@@ -150,6 +151,9 @@ pub fn execute<H: Helper>(
                 | (Cmd::AcceptOrInsertLine { .. }, true, false) => {
                     if valid || !validation_result.has_message() {
                         s.edit_insert('\n', 1)?;
+                    }
+                    if let Some(indent) = incomplete {
+                        s.edit_insert(' ', indent)?;
                     }
                 }
                 _ => unreachable!(),

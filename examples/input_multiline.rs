@@ -16,8 +16,7 @@ fn main() -> Result<()> {
         brackets: MatchingBracketValidator::new(),
         highlighter: MatchingBracketHighlighter::new(),
     };
-    let mut rl = Editor::new()?;
-    rl.set_helper(Some(h));
+    let mut rl = Editor::new(h)?;
     rl.bind_sequence(
         KeyEvent(KeyCode::Char('s'), Modifiers::CTRL),
         EventHandler::Simple(Cmd::Newline),

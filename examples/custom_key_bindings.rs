@@ -14,7 +14,7 @@ struct MyHelper(#[rustyline(Hinter)] HistoryHinter);
 
 impl Highlighter for MyHelper {
     fn highlight_prompt<'b, 's: 'b, 'p: 'b>(
-        &'s self,
+        &'s mut self,
         prompt: &'p str,
         default: bool,
     ) -> Cow<'b, str> {
@@ -25,7 +25,7 @@ impl Highlighter for MyHelper {
         }
     }
 
-    fn highlight_hint<'h>(&self, hint: &'h str) -> Cow<'h, str> {
+    fn highlight_hint<'h>(&mut self, hint: &'h str) -> Cow<'h, str> {
         Owned(format!("\x1b[1m{hint}\x1b[m"))
     }
 }
@@ -85,8 +85,7 @@ impl ConditionalEventHandler for TabEventHandler {
 }
 
 fn main() -> Result<()> {
-    let mut rl = Editor::<MyHelper, DefaultHistory>::new()?;
-    rl.set_helper(Some(MyHelper(HistoryHinter::new())));
+    let mut rl = Editor::<MyHelper, DefaultHistory>::new(MyHelper(HistoryHinter::new()))?;
 
     let ceh = Box::new(CompleteHintHandler);
     rl.bind_sequence(KeyEvent::ctrl('E'), EventHandler::Conditional(ceh.clone()));

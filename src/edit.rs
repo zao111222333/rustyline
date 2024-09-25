@@ -31,7 +31,7 @@ pub struct State<'out, 'prompt, H: Helper> {
     saved_line_for_history: LineBuffer, // Current edited line before history browsing
     byte_buffer: [u8; 4],
     pub changes: Changeset, // changes to line, for undo/redo
-    pub helper: Option<&'out H>,
+    pub helper: &'out mut H,
     pub ctx: Context<'out>,          // Give access to history for `hinter`
     pub hint: Option<Box<dyn Hint>>, // last hint displayed
     pub highlight_char: bool,        // `true` if a char has been highlighted
@@ -48,7 +48,7 @@ impl<'out, 'prompt, H: Helper> State<'out, 'prompt, H> {
     pub fn new(
         out: &'out mut <Terminal as Term>::Writer,
         prompt: &'prompt str,
-        helper: Option<&'out H>,
+        helper: &'out mut H,
         ctx: Context<'out>,
     ) -> Self {
         let prompt_size = out.calculate_position(prompt, Position::default());
@@ -69,13 +69,13 @@ impl<'out, 'prompt, H: Helper> State<'out, 'prompt, H> {
         }
     }
 
-    pub fn highlighter(&self) -> Option<&H> {
-        if self.out.colors_enabled() {
-            self.helper
-        } else {
-            None
-        }
-    }
+    // pub fn highlighter(&mut self) -> Option<&mut H> {
+    //     if self.out.colors_enabled() {
+    //         Some(self.helper)
+    //     } else {
+    //         None
+    //     }
+    // }
 
     pub fn next_cmd(
         &mut self,
@@ -139,6 +139,7 @@ impl<'out, 'prompt, H: Helper> State<'out, 'prompt, H> {
             debug_assert!(self.layout.prompt_size <= self.layout.cursor);
             debug_assert!(self.layout.cursor <= self.layout.end);
         }
+        self.update_after_move_cursor();
         Ok(())
     }
 
@@ -148,11 +149,14 @@ impl<'out, 'prompt, H: Helper> State<'out, 'prompt, H> {
         }
         self.out.move_cursor(self.layout.cursor, self.layout.end)?;
         self.layout.cursor = self.layout.end;
+        self.update_after_move_cursor();
         Ok(())
     }
 
     pub fn move_cursor_at_leftmost(&mut self, rdr: &mut <Terminal as Term>::Reader) -> Result<()> {
-        self.out.move_cursor_at_leftmost(rdr)
+        self.out.move_cursor_at_leftmost(rdr)?;
+        self.update_after_move_cursor();
+        Ok(())
     }
 
     fn refresh(
@@ -167,11 +171,6 @@ impl<'out, 'prompt, H: Helper> State<'out, 'prompt, H> {
             Info::Hint => self.hint.as_ref().map(|h| h.display()),
             Info::Msg(msg) => msg,
         };
-        let highlighter = if self.out.colors_enabled() {
-            self.helper
-        } else {
-            None
-        };
 
         let new_layout = self
             .out
@@ -179,13 +178,14 @@ impl<'out, 'prompt, H: Helper> State<'out, 'prompt, H> {
 
         debug!(target: "rustyline", "old layout: {:?}", self.layout);
         debug!(target: "rustyline", "new layout: {:?}", new_layout);
+        // if self.out.colors_enabled() {
         self.out.refresh_line(
             prompt,
             &self.line,
             info,
             &self.layout,
             &new_layout,
-            highlighter,
+            self.helper,
         )?;
         self.layout = new_layout;
 
@@ -193,34 +193,43 @@ impl<'out, 'prompt, H: Helper> State<'out, 'prompt, H> {
     }
 
     pub fn hint(&mut self) {
-        if let Some(hinter) = self.helper {
-            let hint = hinter.hint(self.line.as_str(), self.line.pos(), &self.ctx);
-            self.hint = match hint {
-                Some(val) if !val.display().is_empty() => Some(Box::new(val) as Box<dyn Hint>),
-                _ => None,
-            };
-        } else {
-            self.hint = None;
-        }
+        let hint = self
+            .helper
+            .hint(self.line.as_str(), self.line.pos(), &self.ctx);
+        self.hint = match hint {
+            Some(val) if !val.display().is_empty() => Some(Box::new(val) as Box<dyn Hint>),
+            _ => None,
+        };
+    }
+
+    fn update_after_edit(&mut self) {
+        self.helper
+            .update_after_edit(&self.line, self.line.pos(), self.forced_refresh);
+    }
+
+    fn update_after_move_cursor(&mut self) {
+        self.helper
+            .update_after_move_cursor(&self.line, self.line.pos());
     }
 
     fn highlight_char(&mut self) -> bool {
-        if let Some(highlighter) = self.highlighter() {
-            let highlight_char =
-                highlighter.highlight_char(&self.line, self.line.pos(), self.forced_refresh);
-            if highlight_char {
-                self.highlight_char = true;
-                true
-            } else if self.highlight_char {
-                // previously highlighted => force a full refresh
-                self.highlight_char = false;
-                true
-            } else {
-                false
-            }
+        // if let Some(highlighter) = self.highlighter() {
+        let highlight_char =
+            self.helper
+                .highlight_char(&self.line, self.line.pos(), self.forced_refresh);
+        if highlight_char {
+            self.highlight_char = true;
+            true
+        } else if self.highlight_char {
+            // previously highlighted => force a full refresh
+            self.highlight_char = false;
+            true
         } else {
             false
         }
+        // } else {
+        //     false
+        // }
     }
 
     pub fn is_default_prompt(&self) -> bool {
@@ -228,30 +237,31 @@ impl<'out, 'prompt, H: Helper> State<'out, 'prompt, H> {
     }
 
     pub fn validate(&mut self) -> Result<ValidationResult> {
-        if let Some(validator) = self.helper {
-            self.changes.begin();
-            let result = validator.validate(&mut ValidationContext::new(self))?;
-            let corrected = self.changes.end();
-            match result {
-                ValidationResult::Incomplete => {}
-                ValidationResult::Valid(ref msg) => {
-                    // Accept the line regardless of where the cursor is.
-                    if corrected || self.has_hint() || msg.is_some() {
-                        // Force a refresh without hints to leave the previous
-                        // line as the user typed it after a newline.
-                        self.refresh_line_with_msg(msg.as_deref())?;
-                    }
-                }
-                ValidationResult::Invalid(ref msg) => {
-                    if corrected || self.has_hint() || msg.is_some() {
-                        self.refresh_line_with_msg(msg.as_deref())?;
-                    }
+        self.changes.begin();
+        let mut invoke: &str = &self.line;
+        let result = self
+            .helper
+            .validate(&mut ValidationContext::new(&mut invoke))?;
+        let corrected = self.changes.end();
+        match result {
+            ValidationResult::Incomplete(_) => {
+                self.refresh_line()?;
+            }
+            ValidationResult::Valid(ref msg) => {
+                // Accept the line regardless of where the cursor is.
+                if corrected || self.has_hint() || msg.is_some() {
+                    // Force a refresh without hints to leave the previous
+                    // line as the user typed it after a newline.
+                    self.refresh_line_with_msg(msg.as_deref())?;
                 }
             }
-            Ok(result)
-        } else {
-            Ok(ValidationResult::Valid(None))
+            ValidationResult::Invalid(ref msg) => {
+                if corrected || self.has_hint() || msg.is_some() {
+                    self.refresh_line_with_msg(msg.as_deref())?;
+                }
+            }
         }
+        Ok(result)
     }
 }
 
@@ -264,6 +274,7 @@ impl<'out, 'prompt, H: Helper> Invoke for State<'out, 'prompt, H> {
 impl<'out, 'prompt, H: Helper> Refresher for State<'out, 'prompt, H> {
     fn refresh_line(&mut self) -> Result<()> {
         let prompt_size = self.prompt_size;
+        self.update_after_edit();
         self.hint();
         self.highlight_char();
         self.refresh(self.prompt, prompt_size, true, Info::Hint)
@@ -272,12 +283,14 @@ impl<'out, 'prompt, H: Helper> Refresher for State<'out, 'prompt, H> {
     fn refresh_line_with_msg(&mut self, msg: Option<&str>) -> Result<()> {
         let prompt_size = self.prompt_size;
         self.hint = None;
+        self.update_after_edit();
         self.highlight_char();
         self.refresh(self.prompt, prompt_size, true, Info::Msg(msg))
     }
 
     fn refresh_prompt_and_line(&mut self, prompt: &str) -> Result<()> {
         let prompt_size = self.out.calculate_position(prompt, Position::default());
+        self.update_after_edit();
         self.hint();
         self.highlight_char();
         self.refresh(prompt, prompt_size, false, Info::Hint)
@@ -351,6 +364,7 @@ impl<'out, 'prompt, H: Helper> State<'out, 'prompt, H> {
     /// Insert the character `ch` at cursor current position.
     pub fn edit_insert(&mut self, ch: char, n: RepeatCount) -> Result<()> {
         if let Some(push) = self.line.insert(ch, n, &mut self.changes) {
+            self.update_after_edit();
             if push {
                 let prompt_size = self.prompt_size;
                 let no_previous_hint = self.hint.is_none();
@@ -748,7 +762,7 @@ pub fn init_state<'out, H: Helper>(
     out: &'out mut <Terminal as Term>::Writer,
     line: &str,
     pos: usize,
-    helper: Option<&'out H>,
+    helper: &'out mut H,
     history: &'out crate::history::DefaultHistory,
 ) -> State<'out, 'static, H> {
     State {
@@ -781,8 +795,8 @@ mod test {
         history.add("line0").unwrap();
         history.add("line1").unwrap();
         let line = "current edited line";
-        let helper: Option<()> = None;
-        let mut s = init_state(&mut out, line, 6, helper.as_ref(), &history);
+        let mut binding = ();
+        let mut s = init_state(&mut out, line, 6, &mut binding, &history);
         s.ctx.history_index = history.len();
 
         for _ in 0..2 {
