@@ -204,23 +204,23 @@ impl<'out, 'prompt, H: Helper> State<'out, 'prompt, H> {
     }
 
     fn highlight_char(&mut self) -> bool {
-        // if let Some(highlighter) = self.highlighter() {
-        let highlight_char =
-            self.helper
-                .highlight_char(&self.line, self.line.pos(), self.forced_refresh);
-        if highlight_char {
-            self.highlight_char = true;
-            true
-        } else if self.highlight_char {
-            // previously highlighted => force a full refresh
-            self.highlight_char = false;
-            true
+        if self.out.colors_enabled() {
+            let highlight_char =
+                self.helper
+                    .highlight_char(&self.line, self.line.pos(), self.forced_refresh);
+            if highlight_char {
+                self.highlight_char = true;
+                true
+            } else if self.highlight_char {
+                // previously highlighted => force a full refresh
+                self.highlight_char = false;
+                true
+            } else {
+                false
+            }
         } else {
             false
         }
-        // } else {
-        //     false
-        // }
     }
 
     pub fn is_default_prompt(&self) -> bool {
