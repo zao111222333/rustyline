@@ -69,14 +69,6 @@ impl<'out, 'prompt, H: Helper> State<'out, 'prompt, H> {
         }
     }
 
-    // pub fn highlighter(&mut self) -> Option<&mut H> {
-    //     if self.out.colors_enabled() {
-    //         Some(self.helper)
-    //     } else {
-    //         None
-    //     }
-    // }
-
     pub fn next_cmd(
         &mut self,
         input_state: &mut InputState,
@@ -178,7 +170,6 @@ impl<'out, 'prompt, H: Helper> State<'out, 'prompt, H> {
 
         debug!(target: "rustyline", "old layout: {:?}", self.layout);
         debug!(target: "rustyline", "new layout: {:?}", new_layout);
-        // if self.out.colors_enabled() {
         self.out.refresh_line(
             prompt,
             &self.line,

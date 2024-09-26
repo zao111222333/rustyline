@@ -338,15 +338,14 @@ fn page_completions<C: Candidate, H: Helper>(
             if i < candidates.len() {
                 let candidate = &candidates[i].display();
                 let width = candidate.width();
-                ab.push_str(
-                    &s.helper
-                        .highlight_candidate(candidate, CompletionType::List),
-                );
-                // if let Some(highlighter) = s.highlighter() {
-                //     ab.push_str(&highlighter.highlight_candidate(candidate, CompletionType::List));
-                // } else {
-                //     ab.push_str(candidate);
-                // }
+                if s.out.colors_enabled() {
+                    ab.push_str(
+                        &s.helper
+                            .highlight_candidate(candidate, CompletionType::List),
+                    );
+                } else {
+                    ab.push_str(candidate);
+                }
                 if ((col + 1) * num_rows) + row < candidates.len() {
                     for _ in width..max_width {
                         ab.push(' ');

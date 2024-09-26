@@ -997,41 +997,41 @@ impl Renderer for PosixRenderer {
 
         self.clear_old_rows(old_layout);
 
-        // if let Some(highlighter) = highlighter {
         // display the prompt
-        self.buffer
-            .push_str(&highlighter.highlight_prompt(prompt, default_prompt));
-        // display the input line
-        cfg_if::cfg_if! {
-            if #[cfg(not(feature = "split-highlight"))] {
-                self.buffer
-                    .push_str(&highlighter.highlight(line, line.pos()));
-            } else if #[cfg(feature = "ansi-str")] {
-                self.buffer
-                    .push_str(&highlighter.highlight(line, line.pos()));
-            } else {
-                use crate::highlight::{Style, StyledBlock};
-                for sb in highlighter.highlight_line(line, line.pos()) {
-                    let style = sb.style();
-                    write!(self.buffer, "{}", style.start())?;
-                    self.buffer.push_str(sb.text());
-                    write!(self.buffer, "{}", style.end())?;
+        if self.colors_enabled() {
+            self.buffer
+                .push_str(&highlighter.highlight_prompt(prompt, default_prompt));
+            // display the input line
+            cfg_if::cfg_if! {
+                if #[cfg(not(feature = "split-highlight"))] {
+                    self.buffer
+                        .push_str(&highlighter.highlight(line, line.pos()));
+                } else if #[cfg(feature = "ansi-str")] {
+                    self.buffer
+                        .push_str(&highlighter.highlight(line, line.pos()));
+                } else {
+                    use crate::highlight::{Style, StyledBlock};
+                    for sb in highlighter.highlight_line(line, line.pos()) {
+                        let style = sb.style();
+                        write!(self.buffer, "{}", style.start())?;
+                        self.buffer.push_str(sb.text());
+                        write!(self.buffer, "{}", style.end())?;
+                    }
                 }
             }
+        } else {
+            // display the prompt
+            self.buffer.push_str(prompt);
+            // display the input line
+            self.buffer.push_str(line);
         }
-        // } else {
-        //     // display the prompt
-        //     self.buffer.push_str(prompt);
-        //     // display the input line
-        //     self.buffer.push_str(line);
-        // }
         // display hint
         if let Some(hint) = hint {
-            // if let Some(highlighter) = highlighter {
-            self.buffer.push_str(&highlighter.highlight_hint(hint));
-            // } else {
-            //     self.buffer.push_str(hint);
-            // }
+            if self.colors_enabled() {
+                self.buffer.push_str(&highlighter.highlight_hint(hint));
+            } else {
+                self.buffer.push_str(hint);
+            }
         }
         // we have to generate our own newline on line wrap
         if end_pos.col == 0
