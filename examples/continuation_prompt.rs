@@ -24,6 +24,9 @@ impl Helper for InputValidator {
         });
         self.need_render = true;
     }
+    fn continuation_prompt_width<'b, 's: 'b, 'p: 'b>(&'s self, prompt: &'p str) -> usize {
+        3
+    }
 }
 
 impl Validator for InputValidator {
