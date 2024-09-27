@@ -444,7 +444,7 @@ impl Renderer for ConsoleRenderer {
 
         self.buffer.clear();
         let mut col = 0;
-        if let Some(highlighter) = highlighter {
+        if self.colors_enabled() {
             // TODO handle ansi escape code (SetConsoleTextAttribute)
             // append the prompt
             col = self.wrap_at_eol(&highlighter.highlight_prompt(prompt, default_prompt), col);
@@ -476,12 +476,10 @@ impl Renderer for ConsoleRenderer {
             // append the input line
             self.buffer.push_str(line);
         }
-        // append hint
+        // display hint
         if let Some(hint) = hint {
-            if let Some(highlighter) = highlighter {
+            if self.colors_enabled() {
                 self.wrap_at_eol(&highlighter.highlight_hint(hint), col);
-            } else if self.colors_enabled {
-                self.wrap_at_eol(hint, col);
             } else {
                 self.buffer.push_str(hint);
             }

@@ -572,11 +572,28 @@ where
     fn update_after_move_cursor(&mut self, line: &str, pos: usize) {
         _ = (line, pos);
     }
+
+    /// Return the width of continuation prompt,
+    /// the continuation prompt should be implemented at highlight
+    fn continuation_prompt_width<'b, 's: 'b, 'p: 'b>(&'s self, prompt: &'p str) -> usize {
+        _ = prompt;
+        0
+    }
 }
 
 impl Helper for () {}
 
-impl<'h, H: Helper> Helper for &'h mut H {}
+impl<'h, H: Helper> Helper for &'h mut H {
+    fn update_after_edit(&mut self, line: &str, pos: usize, forced_refresh: bool) {
+        (**self).update_after_edit(line, pos, forced_refresh)
+    }
+    fn update_after_move_cursor(&mut self, line: &str, pos: usize) {
+        (**self).update_after_move_cursor(line,pos)
+    }
+    fn continuation_prompt_width<'b, 's: 'b, 'p: 'b>(&'s self, prompt: &'p str) -> usize {
+        (**self).continuation_prompt_width(prompt)
+    }
+}
 
 /// Completion/suggestion context
 pub struct Context<'h> {

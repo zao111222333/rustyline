@@ -64,20 +64,21 @@ pub trait Renderer {
         &self,
         prompt_size: Position,
         default_prompt: bool,
+        continuation_prompt_width: usize,
         line: &LineBuffer,
         info: Option<&str>,
     ) -> Layout {
         // calculate the desired position of the cursor
         let pos = line.pos();
-        let cursor = self.calculate_position(&line[..pos], prompt_size);
+        let cursor = self.calculate_position(&line[..pos], prompt_size, continuation_prompt_width);
         // calculate the position of the end of the input line
         let mut end = if pos == line.len() {
             cursor
         } else {
-            self.calculate_position(&line[pos..], cursor)
+            self.calculate_position(&line[pos..], cursor, continuation_prompt_width)
         };
         if let Some(info) = info {
-            end = self.calculate_position(info, end);
+            end = self.calculate_position(info, end, continuation_prompt_width);
         }
 
         let new_layout = Layout {
@@ -93,7 +94,12 @@ pub trait Renderer {
 
     /// Calculate the number of columns and rows used to display `s` on a
     /// `cols` width terminal starting at `orig`.
-    fn calculate_position(&self, s: &str, orig: Position) -> Position;
+    fn calculate_position(
+        &self,
+        s: &str,
+        orig: Position,
+        continuation_prompt_width: usize,
+    ) -> Position;
 
     fn write_and_flush(&mut self, buf: &str) -> Result<()>;
 
@@ -138,8 +144,13 @@ impl<'a, R: Renderer + ?Sized> Renderer for &'a mut R {
         (**self).refresh_line(prompt, line, hint, old_layout, new_layout, highlighter)
     }
 
-    fn calculate_position(&self, s: &str, orig: Position) -> Position {
-        (**self).calculate_position(s, orig)
+    fn calculate_position(
+        &self,
+        s: &str,
+        orig: Position,
+        continuation_prompt_width: usize,
+    ) -> Position {
+        (**self).calculate_position(s, orig, continuation_prompt_width)
     }
 
     fn write_and_flush(&mut self, buf: &str) -> Result<()> {

@@ -112,7 +112,13 @@ impl Renderer for Sink {
         Ok(())
     }
 
-    fn calculate_position(&self, s: &str, orig: Position) -> Position {
+    fn calculate_position(
+        &self,
+        s: &str,
+        orig: Position,
+        continuation_prompt_width: usize,
+    ) -> Position {
+        _ = continuation_prompt_width;
         let mut pos = orig;
         pos.col += s.len();
         pos

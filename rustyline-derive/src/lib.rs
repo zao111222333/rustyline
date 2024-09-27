@@ -102,12 +102,12 @@ pub fn highlighter_macro_derive(input: TokenStream) -> TokenStream {
         quote! {
             #[automatically_derived]
             impl #impl_generics ::rustyline::highlight::Highlighter for #name #ty_generics #where_clause {
-                #[cfg(any(not(feature = "split-highlight"), feature = "ansi-str"))]
+                #[cfg(not(feature = "split-highlight"))]
                 fn highlight<'l>(&mut self, line: &'l str, pos: usize) -> ::std::borrow::Cow<'l, str> {
                     ::rustyline::highlight::Highlighter::highlight(&mut self.#field_name_or_index, line, pos)
                 }
 
-                #[cfg(all(feature = "split-highlight", not(feature = "ansi-str")))]
+                #[cfg(feature = "split-highlight")]
                 fn highlight_line<'l>(
                     &mut self,
                     line: &'l str,

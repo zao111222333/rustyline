@@ -1006,9 +1006,6 @@ impl Renderer for PosixRenderer {
                 if #[cfg(not(feature = "split-highlight"))] {
                     self.buffer
                         .push_str(&highlighter.highlight(line, line.pos()));
-                } else if #[cfg(feature = "ansi-str")] {
-                    self.buffer
-                        .push_str(&highlighter.highlight(line, line.pos()));
                 } else {
                     use crate::highlight::{Style, StyledBlock};
                     for sb in highlighter.highlight_line(line, line.pos()) {
@@ -1064,7 +1061,12 @@ impl Renderer for PosixRenderer {
 
     /// Control characters are treated as having zero width.
     /// Characters with 2 column width are correctly handled (not split).
-    fn calculate_position(&self, s: &str, orig: Position) -> Position {
+    fn calculate_position(
+        &self,
+        s: &str,
+        orig: Position,
+        continuation_prompt_width: usize,
+    ) -> Position {
         let mut pos = orig;
         let mut esc_seq = 0;
         for c in s.graphemes(true) {
@@ -1088,13 +1090,9 @@ impl Renderer for PosixRenderer {
             pos.col = 0;
             pos.row += 1;
         }
-        cfg_if::cfg_if! {
-            if #[cfg(feature = "continuation-prompt")] {
-                // add continuation prompt offset
-                if pos.row > orig.row {
-                    pos.col += orig.col;
-                }
-            }
+        // add continuation prompt offset
+        if pos.row > orig.row {
+            pos.col += continuation_prompt_width;
         }
         pos
     }
@@ -1673,7 +1671,7 @@ mod test {
     #[ignore]
     fn prompt_with_ansi_escape_codes() {
         let out = PosixRenderer::new(libc::STDOUT_FILENO, 4, true, BellStyle::default());
-        let pos = out.calculate_position("\x1b[1;32m>>\x1b[0m ", Position::default());
+        let pos = out.calculate_position("\x1b[1;32m>>\x1b[0m ", Position::default(), 0);
         assert_eq!(3, pos.col);
         assert_eq!(0, pos.row);
     }
@@ -1704,10 +1702,10 @@ mod test {
         let mut out = PosixRenderer::new(libc::STDOUT_FILENO, 4, true, BellStyle::default());
         let prompt = "> ";
         let default_prompt = true;
-        let prompt_size = out.calculate_position(prompt, Position::default());
+        let prompt_size = out.calculate_position(prompt, Position::default(), 0);
 
         let mut line = LineBuffer::init("", 0);
-        let old_layout = out.compute_layout(prompt_size, default_prompt, &line, None);
+        let old_layout = out.compute_layout(prompt_size, default_prompt, 0, &line, None);
         assert_eq!(Position { col: 2, row: 0 }, old_layout.cursor);
         assert_eq!(old_layout.cursor, old_layout.end);
 
@@ -1715,30 +1713,15 @@ mod test {
             Some(true),
             line.insert('a', out.cols - prompt_size.col + 1, &mut NoListener)
         );
-        let new_layout = out.compute_layout(prompt_size, default_prompt, &line, None);
-        cfg_if::cfg_if! {
-            if #[cfg(feature = "continuation-prompt")] {
-                assert_eq!(Position { col: 3, row: 1 }, new_layout.cursor);
-            } else {
-                assert_eq!(Position { col: 1, row: 1 }, new_layout.cursor);
-            }
-        }
+        let new_layout = out.compute_layout(prompt_size, default_prompt, 0, &line, None);
+        assert_eq!(Position { col: 1, row: 1 }, new_layout.cursor);
         assert_eq!(new_layout.cursor, new_layout.end);
         out.refresh_line::<()>(prompt, &line, None, &old_layout, &new_layout, &mut ())
             .unwrap();
         #[rustfmt::skip]
-        cfg_if::cfg_if! {
-            if #[cfg(feature = "continuation-prompt")] {
-                assert_eq!(
-                    "\r\u{1b}[K> aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\r\u{1b}[3C",
-                    out.buffer
-                );
-            } else {
-                assert_eq!(
-                    "\r\u{1b}[K> aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\r\u{1b}[1C",
-                    out.buffer
-                );
-            }
-        }
+        assert_eq!(
+            "\r\u{1b}[K> aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\r\u{1b}[1C",
+            out.buffer
+        );
     }
 }
