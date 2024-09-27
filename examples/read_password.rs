@@ -27,11 +27,7 @@ impl Highlighter for MaskingHighlighter {
     ) -> impl Iterator<Item = impl 'l + rustyline::highlight::StyledBlock> {
         use unicode_width::UnicodeWidthStr;
         if self.masking {
-            vec![(
-                (),
-                " ".repeat(line.width()),
-            )]
-            .into_iter()
+            vec![((), " ".repeat(line.width()))].into_iter()
         } else {
             vec![((), line.to_owned())].into_iter()
         }

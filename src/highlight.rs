@@ -1,22 +1,18 @@
 //! Syntax highlighting
 
 use crate::config::CompletionType;
+use core::fmt::Display;
 use std::borrow::Cow::{self, Borrowed};
 use std::cell::Cell;
-#[cfg(feature = "split-highlight")]
-use std::fmt::Display;
 
 /// ANSI style
-#[cfg(feature = "split-highlight")]
-#[cfg_attr(docsrs, doc(cfg(feature = "split-highlight")))]
-pub trait Style: Default {
+pub trait Style {
     /// Produce a ansi sequences which sets the graphic mode
     fn start(&self) -> impl Display;
     /// Produce a ansi sequences which ends the graphic mode
     fn end(&self) -> impl Display;
 }
 
-#[cfg(feature = "split-highlight")]
 impl Style for () {
     fn start(&self) -> impl Display {
         ""
@@ -51,8 +47,6 @@ impl Style for anstyle::Style {
 }
 
 /// Styled text
-#[cfg(feature = "split-highlight")]
-#[cfg_attr(docsrs, doc(cfg(feature = "split-highlight")))]
 pub trait StyledBlock {
     /// Style impl
     type Style: Style
@@ -79,8 +73,7 @@ impl StyledBlock for ansi_str::AnsiBlock<'_> {
     }
 }*/
 
-#[cfg(feature = "split-highlight")]
-impl<S:Style, T: AsRef<str>> StyledBlock for (S, T) {
+impl<S: Style, T: AsRef<str>> StyledBlock for (S, T) {
     type Style = S;
 
     fn text(&self) -> &str {
@@ -103,10 +96,7 @@ pub trait Highlighter {
     /// For example, you can implement
     /// [blink-matching-paren](https://www.gnu.org/software/bash/manual/html_node/Readline-Init-File-Syntax.html).
     #[cfg(not(feature = "split-highlight"))]
-    #[cfg_attr(
-        docsrs,
-        doc(cfg(not(feature = "split-highlight")))
-    )]
+    #[cfg_attr(docsrs, doc(cfg(not(feature = "split-highlight"))))]
     fn highlight<'l>(&mut self, line: &'l str, pos: usize) -> Cow<'l, str> {
         let _ = pos;
         Borrowed(line)
@@ -115,10 +105,7 @@ pub trait Highlighter {
     /// Takes the currently edited `line` with the cursor `pos`ition and
     /// returns the styled blocks.
     #[cfg(feature = "split-highlight")]
-    #[cfg_attr(
-        docsrs,
-        doc(cfg(feature = "split-highlight"))
-    )]
+    #[cfg_attr(docsrs, doc(cfg(feature = "split-highlight")))]
     fn highlight_line<'l>(
         &mut self,
         line: &'l str,
@@ -262,7 +249,7 @@ impl Highlighter for MatchingBracketHighlighter {
         line: &'l str,
         _pos: usize,
     ) -> impl Iterator<Item = impl 'l + StyledBlock> {
-        cfg_if::cfg_if!{
+        cfg_if::cfg_if! {
             if #[cfg(feature = "anstyle")]{
                 if line.len() <= 1 {
                     return vec![(anstyle::Style::new(), line)].into_iter();
@@ -297,7 +284,6 @@ impl Highlighter for MatchingBracketHighlighter {
                 vec![((), line)].into_iter()
             }
         }
-        
     }
 
     fn highlight_char(&mut self, line: &str, pos: usize, forced: bool) -> bool {

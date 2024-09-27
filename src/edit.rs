@@ -51,7 +51,11 @@ impl<'out, 'prompt, H: Helper> State<'out, 'prompt, H> {
         helper: &'out mut H,
         ctx: Context<'out>,
     ) -> Self {
-        let prompt_size = out.calculate_position(prompt, Position::default(), helper.continuation_prompt_width(prompt));
+        let prompt_size = out.calculate_position(
+            prompt,
+            Position::default(),
+            helper.continuation_prompt_width(prompt),
+        );
         Self {
             out,
             prompt,
@@ -86,9 +90,11 @@ impl<'out, 'prompt, H: Helper> State<'out, 'prompt, H> {
                 if new_cols != old_cols
                     && (self.layout.end.row > 0 || self.layout.end.col >= new_cols)
                 {
-                    self.prompt_size =
-                        self.out
-                            .calculate_position(self.prompt, Position::default(), self.helper.continuation_prompt_width(self.prompt));
+                    self.prompt_size = self.out.calculate_position(
+                        self.prompt,
+                        Position::default(),
+                        self.helper.continuation_prompt_width(self.prompt),
+                    );
                     self.refresh_line()?;
                 }
                 continue;
@@ -286,7 +292,11 @@ impl<'out, 'prompt, H: Helper> Refresher for State<'out, 'prompt, H> {
     }
 
     fn refresh_prompt_and_line(&mut self, prompt: &str) -> Result<()> {
-        let prompt_size = self.out.calculate_position(prompt, Position::default(), self.helper.continuation_prompt_width(prompt));
+        let prompt_size = self.out.calculate_position(
+            prompt,
+            Position::default(),
+            self.helper.continuation_prompt_width(prompt),
+        );
         self.update_after_edit();
         self.hint();
         self.highlight_char();

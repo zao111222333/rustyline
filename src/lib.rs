@@ -588,7 +588,7 @@ impl<'h, H: Helper> Helper for &'h mut H {
         (**self).update_after_edit(line, pos, forced_refresh)
     }
     fn update_after_move_cursor(&mut self, line: &str, pos: usize) {
-        (**self).update_after_move_cursor(line,pos)
+        (**self).update_after_move_cursor(line, pos)
     }
     fn continuation_prompt_width<'b, 's: 'b, 'p: 'b>(&'s self, prompt: &'p str) -> usize {
         (**self).continuation_prompt_width(prompt)
