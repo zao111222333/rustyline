@@ -2,7 +2,6 @@
 
 use crate::config::CompletionType;
 use core::fmt::Display;
-use std::borrow::Cow::{self, Borrowed};
 use std::cell::Cell;
 use std::marker::PhantomData;
 
@@ -145,8 +144,7 @@ impl Style for ansi_str::Style {
         self.end()
     }
 }*/
-// #[cfg(feature = "anstyle")]
-// #[cfg_attr(docsrs, doc(cfg(feature = "anstyle")))]
+
 impl Style for anstyle::Style {
     fn start(&self) -> impl Display {
         self.render()
@@ -296,7 +294,6 @@ impl<'r, H: Highlighter> Highlighter for &'r mut H {
 /// Highlight matching bracket when typed or cursor moved on.
 #[derive(Default)]
 pub struct MatchingBracketHighlighter {
-    // #[cfg(feature = "anstyle")]
     style: anstyle::Style,
     bracket: Cell<Option<(u8, usize)>>, // memorize the character to search...
 }
@@ -306,7 +303,6 @@ impl MatchingBracketHighlighter {
     #[must_use]
     pub fn new() -> Self {
         Self {
-            // #[cfg(feature = "anstyle")]
             style: anstyle::Style::new()
                 .bold()
                 .fg_color(Some(anstyle::AnsiColor::Blue.into())),
@@ -321,18 +317,24 @@ impl Highlighter for MatchingBracketHighlighter {
         line: &'l str,
         _pos: usize,
     ) -> impl 'b + DisplayOnce {
-        if line.len() <= 1 {
-            return Borrowed(line);
-        }
-        // highlight matching brace/bracket/parenthesis if it exists
-        if let Some((bracket, pos)) = self.bracket.get() {
-            if let Some((matching, idx)) = find_matching_bracket(line, pos, bracket) {
-                let mut copy = line.to_owned();
-                copy.replace_range(idx..=idx, &format!("\x1b[1;34m{}\x1b[0m", matching as char));
-                return Cow::Owned(copy);
-            }
-        }
-        Borrowed(line)
+        let empty_style = anstyle::Style::new();
+        let iter = if line.len() <= 1 {
+            vec![(empty_style, line)].into_iter()
+        } else {
+            // highlight matching brace/bracket/parenthesis if it exists
+            self.bracket
+                .get()
+                .and_then(|(bracket, pos)| find_matching_bracket(line, pos, bracket))
+                .map_or(vec![(empty_style, line)].into_iter(), |(_, idx)| {
+                    vec![
+                        (empty_style, &line[0..idx]),
+                        (self.style, &line[idx..=idx]),
+                        (empty_style, &line[idx + 1..]),
+                    ]
+                    .into_iter()
+                })
+        };
+        StyledBlocks::new(iter)
     }
 
     fn highlight_char(&mut self, line: &str, pos: usize, forced: bool) -> bool {
