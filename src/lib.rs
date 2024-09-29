@@ -643,12 +643,16 @@ pub type DefaultEditor = Editor<(), DefaultHistory>;
 
 #[allow(clippy::new_without_default)]
 impl<H: Helper> Editor<H, DefaultHistory> {
-    /// Create an editor with the default configuration
+    /// Create an editor with a helper and the default configuration.
+    /// 
+    /// Use `new(())` for default Helper.
     pub fn new(helper: H) -> Result<Self> {
         Self::with_config(Config::default(), helper)
     }
 
-    /// Create an editor with a specific configuration.
+    /// Create an editor with a specific configuration and a helper.
+    /// 
+    /// Use `with_config(config,())` for default Helper.
     pub fn with_config(config: Config, helper: H) -> Result<Self> {
         Self::with_history(config, DefaultHistory::with_config(config), helper)
     }
@@ -883,9 +887,10 @@ impl<H: Helper, I: History> Editor<H, I> {
         &self.history
     }
 
-    /// Register a callback function to be called for tab-completion
-    /// or to show hints to the user at the right of the prompt.
-    #[deprecated = "reason"]
+    /// This will do nothing and will remove in future version.
+    /// 
+    /// Now we should specify the helper when create the editor
+    #[deprecated = "specify the helper when crate the editor"]
     pub fn set_helper(&mut self) {}
 
     /// Return a mutable reference to the helper.
