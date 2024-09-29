@@ -28,7 +28,8 @@ use rustyline::{DefaultEditor, Result};
 
 fn main() -> Result<()> {
     // `()` can be used when no completer is required
-    let mut rl = DefaultEditor::new()?;
+    // Use `new(())` for default Helper.
+    let mut rl = DefaultEditor::new(())?;
     #[cfg(feature = "with-file-history")]
     if rl.load_history("history.txt").is_err() {
         println!("No previous history.");
