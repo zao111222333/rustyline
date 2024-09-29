@@ -72,7 +72,6 @@ with-fuzzy = ["skim"]
 case_insensitive_history_search = ["regex"]
 # For continuation prompt, indentation, scrolling
 split-highlight = []
-continuation-prompt = []
 
 [[example]]
 name = "custom_key_bindings"
