@@ -99,7 +99,7 @@ name = "sqlite_history"
 required-features = ["with-sqlite-history"]
 [[example]]
 name = "continuation_prompt"
-required-features = ["custom-bindings", "derive", "continuation-prompt", "split-highlight"]
+required-features = ["custom-bindings", "derive", "split-highlight"]
 
 [package.metadata.docs.rs]
 features = [
