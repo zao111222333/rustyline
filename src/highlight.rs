@@ -4,6 +4,7 @@ use crate::config::CompletionType;
 use core::fmt::Display;
 use std::borrow::Cow::{self, Borrowed};
 use std::cell::Cell;
+use std::marker::PhantomData;
 
 /// ANSI style
 pub trait Style {
@@ -11,6 +12,116 @@ pub trait Style {
     fn start(&self) -> impl Display;
     /// Produce a ansi sequences which ends the graphic mode
     fn end(&self) -> impl Display;
+}
+
+/// The general trait that consume self to display
+///
+/// For **normal** highlight, all types that impl [`core::fmt::Display`] will auto-impl [`DisplayOnce`]
+///
+/// For **split-highlight**, you can use `impl Iterator<Item = 'l + StyledBlock>`
+/// to get a [`StyledBlocks`], which is also impl [`DisplayOnce`]:
+///
+/// ```
+/// use rustyline::highlight::{DisplayOnce, StyledBlock, StyledBlocks};
+/// use anstyle::{Ansi256Color, Style};
+/// struct Helper;
+/// fn highlight<'b, 's: 'b, 'l: 'b>(
+///     helper: &'s mut Helper,
+///     line: &'l str,
+/// ) -> impl 'b + DisplayOnce {
+///     fn get_style(i: usize) -> Style {
+///         Style::new().fg_color(Some(Ansi256Color((i % 16) as u8).into()))
+///     }
+///     let iter = (0..line.len()).map(move |i| (get_style(i), &line[i..i + 1]));
+///     StyledBlocks::new(iter)
+/// }
+/// let mut helper = Helper;
+/// highlight(&mut helper, "hello world\n").print();
+/// ```
+pub trait DisplayOnce {
+    /// consume self to display
+    fn fmt<W: core::fmt::Write>(self, f: &mut W) -> core::fmt::Result;
+    /// consume self to print
+    fn print(self) -> core::fmt::Result
+    where
+        Self: Sized,
+    {
+        struct StdoutWriter;
+        impl core::fmt::Write for StdoutWriter {
+            fn write_str(&mut self, s: &str) -> core::fmt::Result {
+                use std::io::Write;
+                std::io::stdout()
+                    .write_all(s.as_bytes())
+                    .map_err(|_| core::fmt::Error)
+            }
+        }
+        let mut stdout = StdoutWriter;
+        Self::fmt(self, &mut stdout)
+    }
+}
+
+impl<'l, T: Display> DisplayOnce for T {
+    fn fmt<W: core::fmt::Write>(self, f: &mut W) -> core::fmt::Result {
+        write!(f, "{}", self)
+    }
+}
+
+/// A wrapper of `impl Iterator<Item = 'l + StyledBlock>`
+/// that impl [`DisplayOnce`]:
+///
+/// ```
+/// use rustyline::highlight::{DisplayOnce, StyledBlock, StyledBlocks};
+/// use anstyle::{Ansi256Color, Style};
+/// struct Helper;
+/// fn highlight<'b, 's: 'b, 'l: 'b>(
+///     helper: &'s mut Helper,
+///     line: &'l str,
+/// ) -> impl 'b + DisplayOnce {
+///     fn get_style(i: usize) -> Style {
+///         Style::new().fg_color(Some(Ansi256Color((i % 16) as u8).into()))
+///     }
+///     let iter = (0..line.len()).map(move |i| (get_style(i), &line[i..i + 1]));
+///     StyledBlocks::new(iter)
+/// }
+/// let mut helper = Helper;
+/// highlight(&mut helper, "hello world\n").print();
+/// ```
+pub struct StyledBlocks<'l, B, I>
+where
+    B: 'l + StyledBlock,
+    I: Iterator<Item = B>,
+{
+    iter: I,
+    _marker: PhantomData<&'l ()>,
+}
+
+impl<'l, B, I> StyledBlocks<'l, B, I>
+where
+    B: 'l + StyledBlock,
+    I: Iterator<Item = B>,
+{
+    /// create a new [`StyledBlocks`] wrapper
+    pub const fn new(iter: I) -> Self {
+        Self {
+            iter,
+            _marker: PhantomData,
+        }
+    }
+}
+
+impl<'l, B, I> DisplayOnce for StyledBlocks<'l, B, I>
+where
+    B: 'l + StyledBlock,
+    I: Iterator<Item = B>,
+{
+    fn fmt<W: core::fmt::Write>(self, f: &mut W) -> core::fmt::Result {
+        self.iter
+            .map(|block| {
+                let style = block.style();
+                write!(f, "{}{}{}", style.start(), block.text(), style.end())
+            })
+            .collect()
+    }
 }
 
 impl Style for () {
@@ -34,8 +145,8 @@ impl Style for ansi_str::Style {
         self.end()
     }
 }*/
-#[cfg(feature = "anstyle")]
-#[cfg_attr(docsrs, doc(cfg(feature = "anstyle")))]
+// #[cfg(feature = "anstyle")]
+// #[cfg_attr(docsrs, doc(cfg(feature = "anstyle")))]
 impl Style for anstyle::Style {
     fn start(&self) -> impl Display {
         self.render()
@@ -95,24 +206,13 @@ pub trait Highlighter {
     ///
     /// For example, you can implement
     /// [blink-matching-paren](https://www.gnu.org/software/bash/manual/html_node/Readline-Init-File-Syntax.html).
-    #[cfg(not(feature = "split-highlight"))]
-    #[cfg_attr(docsrs, doc(cfg(not(feature = "split-highlight"))))]
-    fn highlight<'l>(&mut self, line: &'l str, pos: usize) -> Cow<'l, str> {
-        let _ = pos;
-        Borrowed(line)
-    }
-
-    /// Takes the currently edited `line` with the cursor `pos`ition and
-    /// returns the styled blocks.
-    #[cfg(feature = "split-highlight")]
-    #[cfg_attr(docsrs, doc(cfg(feature = "split-highlight")))]
-    fn highlight_line<'l>(
-        &mut self,
+    fn highlight<'b, 's: 'b, 'l: 'b>(
+        &'s mut self,
         line: &'l str,
         pos: usize,
-    ) -> impl Iterator<Item = impl 'l + StyledBlock> {
-        let _ = (line, pos);
-        vec![((), line)].into_iter()
+    ) -> impl 'b + DisplayOnce {
+        let _ = pos;
+        line
     }
 
     /// Takes the `prompt` and
@@ -121,26 +221,26 @@ pub trait Highlighter {
         &'s mut self,
         prompt: &'p str,
         default: bool,
-    ) -> Cow<'b, str> {
+    ) -> impl 'b + DisplayOnce {
         let _ = default;
-        Borrowed(prompt)
+        prompt
     }
     /// Takes the `hint` and
     /// returns the highlighted version (with ANSI color).
-    fn highlight_hint<'h>(&mut self, hint: &'h str) -> Cow<'h, str> {
-        Borrowed(hint)
+    fn highlight_hint<'b, 's: 'b, 'h: 'b>(&'s mut self, hint: &'h str) -> impl 'b + DisplayOnce {
+        hint
     }
     /// Takes the completion `candidate` and
     /// returns the highlighted version (with ANSI color).
     ///
     /// Currently, used only with `CompletionType::List`.
-    fn highlight_candidate<'c>(
-        &mut self,
+    fn highlight_candidate<'b, 's: 'b, 'c: 'b>(
+        &'s mut self,
         candidate: &'c str, // FIXME should be Completer::Candidate
         completion: CompletionType,
-    ) -> Cow<'c, str> {
+    ) -> impl 'b + DisplayOnce {
         let _ = completion;
-        Borrowed(candidate)
+        candidate
     }
     /// Tells if `line` needs to be highlighted when a specific char is typed or
     /// when cursor is moved under a specific char.
@@ -158,37 +258,31 @@ pub trait Highlighter {
 impl Highlighter for () {}
 
 impl<'r, H: Highlighter> Highlighter for &'r mut H {
-    #[cfg(not(feature = "split-highlight"))]
-    fn highlight<'l>(&mut self, line: &'l str, pos: usize) -> Cow<'l, str> {
-        (**self).highlight(line, pos)
-    }
-
-    #[cfg(feature = "split-highlight")]
-    fn highlight_line<'l>(
-        &mut self,
+    fn highlight<'b, 's: 'b, 'l: 'b>(
+        &'s mut self,
         line: &'l str,
         pos: usize,
-    ) -> impl Iterator<Item = impl 'l + StyledBlock> {
-        (**self).highlight_line(line, pos)
+    ) -> impl 'b + DisplayOnce {
+        (**self).highlight(line, pos)
     }
 
     fn highlight_prompt<'b, 's: 'b, 'p: 'b>(
         &'s mut self,
         prompt: &'p str,
         default: bool,
-    ) -> Cow<'b, str> {
+    ) -> impl 'b + DisplayOnce {
         (**self).highlight_prompt(prompt, default)
     }
 
-    fn highlight_hint<'h>(&mut self, hint: &'h str) -> Cow<'h, str> {
+    fn highlight_hint<'b, 's: 'b, 'h: 'b>(&'s mut self, hint: &'h str) -> impl 'b + DisplayOnce {
         (**self).highlight_hint(hint)
     }
 
-    fn highlight_candidate<'c>(
-        &mut self,
+    fn highlight_candidate<'b, 's: 'b, 'c: 'b>(
+        &'s mut self,
         candidate: &'c str,
         completion: CompletionType,
-    ) -> Cow<'c, str> {
+    ) -> impl 'b + DisplayOnce {
         (**self).highlight_candidate(candidate, completion)
     }
 
@@ -202,7 +296,7 @@ impl<'r, H: Highlighter> Highlighter for &'r mut H {
 /// Highlight matching bracket when typed or cursor moved on.
 #[derive(Default)]
 pub struct MatchingBracketHighlighter {
-    #[cfg(feature = "anstyle")]
+    // #[cfg(feature = "anstyle")]
     style: anstyle::Style,
     bracket: Cell<Option<(u8, usize)>>, // memorize the character to search...
 }
@@ -212,7 +306,7 @@ impl MatchingBracketHighlighter {
     #[must_use]
     pub fn new() -> Self {
         Self {
-            #[cfg(feature = "anstyle")]
+            // #[cfg(feature = "anstyle")]
             style: anstyle::Style::new()
                 .bold()
                 .fg_color(Some(anstyle::AnsiColor::Blue.into())),
@@ -221,14 +315,12 @@ impl MatchingBracketHighlighter {
     }
 }
 
-#[cfg(any(
-    not(feature = "split-highlight"),
-    feature = "anstyle",
-    feature = "ansi-str"
-))]
 impl Highlighter for MatchingBracketHighlighter {
-    #[cfg(not(feature = "split-highlight"))]
-    fn highlight<'l>(&mut self, line: &'l str, _pos: usize) -> Cow<'l, str> {
+    fn highlight<'b, 's: 'b, 'l: 'b>(
+        &'s mut self,
+        line: &'l str,
+        _pos: usize,
+    ) -> impl 'b + DisplayOnce {
         if line.len() <= 1 {
             return Borrowed(line);
         }
@@ -241,49 +333,6 @@ impl Highlighter for MatchingBracketHighlighter {
             }
         }
         Borrowed(line)
-    }
-
-    #[cfg(feature = "split-highlight")]
-    fn highlight_line<'l>(
-        &mut self,
-        line: &'l str,
-        _pos: usize,
-    ) -> impl Iterator<Item = impl 'l + StyledBlock> {
-        cfg_if::cfg_if! {
-            if #[cfg(feature = "anstyle")]{
-                if line.len() <= 1 {
-                    return vec![(anstyle::Style::new(), line)].into_iter();
-                }
-                if let Some((bracket, pos)) = self.bracket.get() {
-                    if let Some((_, idx)) = find_matching_bracket(line, pos, bracket) {
-                        #[cfg(feature = "anstyle")]
-                        return vec![
-                            (anstyle::Style::new(), &line[0..idx]),
-                            (self.style, &line[idx..=idx]),
-                            (anstyle::Style::new(), &line[idx + 1..]),
-                        ]
-                        .into_iter();
-                    }
-                }
-                vec![(anstyle::Style::new(), line)].into_iter()
-            }else{
-                if line.len() <= 1 {
-                    return vec![((), line)].into_iter();
-                }
-                if let Some((bracket, pos)) = self.bracket.get() {
-                    if let Some((_, idx)) = find_matching_bracket(line, pos, bracket) {
-                        #[cfg(feature = "anstyle")]
-                        return vec![
-                            ((), &line[0..idx]),
-                            ((), &line[idx..=idx]),
-                            ((), &line[idx + 1..]),
-                        ]
-                        .into_iter();
-                    }
-                }
-                vec![((), line)].into_iter()
-            }
-        }
     }
 
     fn highlight_char(&mut self, line: &str, pos: usize, forced: bool) -> bool {

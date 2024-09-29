@@ -125,7 +125,7 @@ impl From<std::string::FromUtf8Error> for ReadlineError {
     }
 }
 
-#[cfg(any(unix, all(feature = "split-highlight", not(feature = "ansi-str"))))]
+#[cfg(unix)]
 impl From<fmt::Error> for ReadlineError {
     fn from(err: fmt::Error) -> Self {
         Self::Io(io::Error::new(io::ErrorKind::Other, err))

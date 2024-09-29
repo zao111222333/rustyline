@@ -21,7 +21,7 @@ use windows_sys::Win32::UI::Input::KeyboardAndMouse;
 
 use super::{width, Event, RawMode, RawReader, Renderer, Term};
 use crate::config::{Behavior, BellStyle, ColorMode, Config};
-use crate::highlight::Highlighter;
+use crate::highlight::{DisplayOnce, Highlighter};
 use crate::keys::{KeyCode as K, KeyEvent, Modifiers as M};
 use crate::layout::{Layout, Position};
 use crate::line_buffer::LineBuffer;
@@ -447,29 +447,12 @@ impl Renderer for ConsoleRenderer {
         if self.colors_enabled() {
             // TODO handle ansi escape code (SetConsoleTextAttribute)
             // append the prompt
-            col = self.wrap_at_eol(&highlighter.highlight_prompt(prompt, default_prompt), col);
+            DisplayOnce::fmt(
+                highlighter.highlight_prompt(prompt, default_prompt),
+                &mut self.buffer,
+            )?;
             // append the input line
-            cfg_if::cfg_if! {
-                if #[cfg(not(feature = "split-highlight"))] {
-                    col = self.wrap_at_eol(&highlighter.highlight(line, line.pos()), col);
-                } else if #[cfg(feature = "ansi-str")] {
-                    col = self.wrap_at_eol(&highlighter.highlight(line, line.pos()), col);
-                } else {
-                    use std::fmt::Write;
-                    use crate::highlight::{Style, StyledBlock};
-                    for sb in highlighter.highlight_line(line, line.pos()) {
-                        let style = sb.style();
-                        write!(self.buffer, "{}", style.start())?;
-                        col = self.wrap_at_eol(sb.text(), col);
-                        write!(self.buffer, "{}", style.end())?;
-                    }
-                }
-            }
-        } else if self.colors_enabled {
-            // append the prompt
-            col = self.wrap_at_eol(prompt, col);
-            // append the input line
-            col = self.wrap_at_eol(line, col);
+            DisplayOnce::fmt(highlighter.highlight(line, line.pos()), &mut self.buffer)?;
         } else {
             // append the prompt
             self.buffer.push_str(prompt);
@@ -479,7 +462,7 @@ impl Renderer for ConsoleRenderer {
         // display hint
         if let Some(hint) = hint {
             if self.colors_enabled() {
-                self.wrap_at_eol(&highlighter.highlight_hint(hint), col);
+                DisplayOnce::fmt(highlighter.highlight_hint(hint), &mut self.buffer)?;
             } else {
                 self.buffer.push_str(hint);
             }

@@ -9,27 +9,16 @@ struct MaskingHighlighter {
 }
 
 impl Highlighter for MaskingHighlighter {
-    #[cfg(not(feature = "split-highlight"))]
-    fn highlight<'l>(&mut self, line: &'l str, _pos: usize) -> std::borrow::Cow<'l, str> {
+    fn highlight<'b, 's: 'b, 'l: 'b>(
+        &'s mut self,
+        line: &'l str,
+        pos: usize,
+    ) -> std::borrow::Cow<'b, str> {
         use unicode_width::UnicodeWidthStr;
         if self.masking {
             std::borrow::Cow::Owned(" ".repeat(line.width()))
         } else {
             std::borrow::Cow::Borrowed(line)
-        }
-    }
-
-    #[cfg(feature = "split-highlight")]
-    fn highlight_line<'l>(
-        &mut self,
-        line: &'l str,
-        _pos: usize,
-    ) -> impl Iterator<Item = impl 'l + rustyline::highlight::StyledBlock> {
-        use unicode_width::UnicodeWidthStr;
-        if self.masking {
-            vec![((), " ".repeat(line.width()))].into_iter()
-        } else {
-            vec![((), line.to_owned())].into_iter()
         }
     }
 

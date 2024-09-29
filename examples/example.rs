@@ -2,7 +2,7 @@ use std::borrow::Cow::{self, Borrowed, Owned};
 
 use rustyline::completion::FilenameCompleter;
 use rustyline::error::ReadlineError;
-use rustyline::highlight::{Highlighter, MatchingBracketHighlighter};
+use rustyline::highlight::{DisplayOnce, Highlighter, MatchingBracketHighlighter};
 use rustyline::hint::HistoryHinter;
 use rustyline::validate::MatchingBracketValidator;
 use rustyline::{Cmd, CompletionType, Config, EditMode, Editor, KeyEvent};
@@ -33,22 +33,16 @@ impl Highlighter for MyHelper {
         }
     }
 
-    fn highlight_hint<'h>(&mut self, hint: &'h str) -> Cow<'h, str> {
+    fn highlight_hint<'b, 's: 'b, 'h: 'b>(&'s mut self, hint: &'h str) -> Cow<'b, str> {
         Owned("\x1b[1m".to_owned() + hint + "\x1b[m")
     }
 
-    #[cfg(not(feature = "split-highlight"))]
-    fn highlight<'l>(&mut self, line: &'l str, pos: usize) -> Cow<'l, str> {
-        self.highlighter.highlight(line, pos)
-    }
-
-    #[cfg(feature = "split-highlight")]
-    fn highlight_line<'l>(
-        &mut self,
+    fn highlight<'b, 's: 'b, 'l: 'b>(
+        &'s mut self,
         line: &'l str,
         pos: usize,
-    ) -> impl Iterator<Item = impl 'l + rustyline::highlight::StyledBlock> {
-        self.highlighter.highlight_line(line, pos)
+    ) -> impl 'b + DisplayOnce {
+        self.highlighter.highlight(line, pos)
     }
 
     fn highlight_char(&mut self, line: &str, pos: usize, forced: bool) -> bool {

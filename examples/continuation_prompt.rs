@@ -1,4 +1,4 @@
-use rustyline::highlight::Highlighter;
+use rustyline::highlight::{DisplayOnce, Highlighter, StyledBlocks};
 use rustyline::validate::{ValidationContext, ValidationResult, Validator};
 use rustyline::{Cmd, Editor, EventHandler, Helper, KeyCode, KeyEvent, Modifiers, Result};
 use rustyline::{Completer, Hinter};
@@ -48,17 +48,17 @@ impl Highlighter for InputValidator {
     fn highlight_char(&mut self, _line: &str, _pos: usize, _forced: bool) -> bool {
         self.need_render
     }
-    #[cfg(feature = "split-highlight")]
-    fn highlight_line<'l>(
-        &mut self,
+    fn highlight<'b, 's: 'b, 'l: 'b>(
+        &'s mut self,
         line: &'l str,
         _pos: usize,
-    ) -> impl Iterator<Item = impl 'l + rustyline::highlight::StyledBlock> {
+    ) -> impl 'b + DisplayOnce {
         use core::iter::once;
         let mut lines = line.split('\n');
         self.need_render = false;
-        once(((), lines.next().unwrap()))
-            .chain(lines.flat_map(|line| once(((), "\n.. ")).chain(once(((), line)))))
+        let iter = once(((), lines.next().unwrap()))
+            .chain(lines.flat_map(|line| once(((), "\n.. ")).chain(once(((), line)))));
+        StyledBlocks::new(iter)
     }
 }
 

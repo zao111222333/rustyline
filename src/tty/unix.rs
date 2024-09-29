@@ -27,7 +27,7 @@ use utf8parse::{Parser, Receiver};
 
 use super::{width, Event, RawMode, RawReader, Renderer, Term};
 use crate::config::{Behavior, BellStyle, ColorMode, Config};
-use crate::highlight::Highlighter;
+use crate::highlight::{DisplayOnce, Highlighter};
 use crate::keys::{KeyCode as K, KeyEvent, KeyEvent as E, Modifiers as M};
 use crate::layout::{Layout, Position};
 use crate::line_buffer::LineBuffer;
@@ -997,25 +997,14 @@ impl Renderer for PosixRenderer {
 
         self.clear_old_rows(old_layout);
 
-        // display the prompt
         if self.colors_enabled() {
-            self.buffer
-                .push_str(&highlighter.highlight_prompt(prompt, default_prompt));
+            // display the prompt
+            DisplayOnce::fmt(
+                highlighter.highlight_prompt(prompt, default_prompt),
+                &mut self.buffer,
+            )?;
             // display the input line
-            cfg_if::cfg_if! {
-                if #[cfg(not(feature = "split-highlight"))] {
-                    self.buffer
-                        .push_str(&highlighter.highlight(line, line.pos()));
-                } else {
-                    use crate::highlight::{Style, StyledBlock};
-                    for sb in highlighter.highlight_line(line, line.pos()) {
-                        let style = sb.style();
-                        write!(self.buffer, "{}", style.start())?;
-                        self.buffer.push_str(sb.text());
-                        write!(self.buffer, "{}", style.end())?;
-                    }
-                }
-            }
+            DisplayOnce::fmt(highlighter.highlight(line, line.pos()), &mut self.buffer)?;
         } else {
             // display the prompt
             self.buffer.push_str(prompt);
@@ -1025,7 +1014,7 @@ impl Renderer for PosixRenderer {
         // display hint
         if let Some(hint) = hint {
             if self.colors_enabled() {
-                self.buffer.push_str(&highlighter.highlight_hint(hint));
+                DisplayOnce::fmt(highlighter.highlight_hint(hint), &mut self.buffer)?;
             } else {
                 self.buffer.push_str(hint);
             }

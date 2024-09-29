@@ -102,37 +102,27 @@ pub fn highlighter_macro_derive(input: TokenStream) -> TokenStream {
         quote! {
             #[automatically_derived]
             impl #impl_generics ::rustyline::highlight::Highlighter for #name #ty_generics #where_clause {
-                #[cfg(not(feature = "split-highlight"))]
-                fn highlight<'l>(&mut self, line: &'l str, pos: usize) -> ::std::borrow::Cow<'l, str> {
+                fn highlight<'b,'h:'b,'l:'b>(&'h mut self, line: &'l str, pos: usize) -> impl 'b + ::rustyline::highlight::DisplayOnce {
                     ::rustyline::highlight::Highlighter::highlight(&mut self.#field_name_or_index, line, pos)
-                }
-
-                #[cfg(feature = "split-highlight")]
-                fn highlight_line<'l>(
-                    &mut self,
-                    line: &'l str,
-                    pos: usize,
-                ) -> impl Iterator<Item = impl 'l + ::rustyline::highlight::StyledBlock> {
-                    ::rustyline::highlight::Highlighter::highlight_line(&mut self.#field_name_or_index, line, pos)
                 }
 
                 fn highlight_prompt<'b, 's: 'b, 'p: 'b>(
                     &'s mut self,
                     prompt: &'p str,
                     default: bool,
-                ) -> ::std::borrow::Cow<'b, str> {
+                ) -> impl 'b + ::rustyline::highlight::DisplayOnce {
                     ::rustyline::highlight::Highlighter::highlight_prompt(&mut self.#field_name_or_index, prompt, default)
                 }
 
-                fn highlight_hint<'h>(&mut self, hint: &'h str) -> ::std::borrow::Cow<'h, str> {
+                fn highlight_hint<'b, 's: 'b, 'h: 'b>(&'s mut self, hint: &'h str) -> impl 'b + ::rustyline::highlight::DisplayOnce {
                     ::rustyline::highlight::Highlighter::highlight_hint(&mut self.#field_name_or_index, hint)
                 }
 
-                fn highlight_candidate<'c>(
-                    &mut self,
+                fn highlight_candidate<'b, 's: 'b, 'c: 'b>(
+                    &'s mut self,
                     candidate: &'c str,
                     completion: ::rustyline::config::CompletionType,
-                ) -> ::std::borrow::Cow<'c, str> {
+                ) -> impl 'b + ::rustyline::highlight::DisplayOnce {
                     ::rustyline::highlight::Highlighter::highlight_candidate(&mut self.#field_name_or_index, candidate, completion)
                 }
 

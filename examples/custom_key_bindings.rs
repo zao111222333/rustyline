@@ -25,7 +25,7 @@ impl Highlighter for MyHelper {
         }
     }
 
-    fn highlight_hint<'h>(&mut self, hint: &'h str) -> Cow<'h, str> {
+    fn highlight_hint<'b, 's: 'b, 'h: 'b>(&'s mut self, hint: &'h str) -> Cow<'b, str> {
         Owned(format!("\x1b[1m{hint}\x1b[m"))
     }
 }

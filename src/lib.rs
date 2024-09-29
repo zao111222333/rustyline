@@ -45,6 +45,7 @@ use std::io::{self, BufRead, Write};
 use std::path::Path;
 use std::result;
 
+use highlight::DisplayOnce;
 use log::debug;
 #[cfg(feature = "derive")]
 #[cfg_attr(docsrs, doc(cfg(feature = "derive")))]
@@ -339,10 +340,11 @@ fn page_completions<C: Candidate, H: Helper>(
                 let candidate = &candidates[i].display();
                 let width = candidate.width();
                 if s.out.colors_enabled() {
-                    ab.push_str(
-                        &s.helper
+                    DisplayOnce::fmt(
+                        s.helper
                             .highlight_candidate(candidate, CompletionType::List),
-                    );
+                        &mut ab,
+                    )?;
                 } else {
                     ab.push_str(candidate);
                 }
