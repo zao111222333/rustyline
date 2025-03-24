@@ -1,7 +1,9 @@
 //! Syntax highlighting
 
 use crate::config::CompletionType;
+use crate::{Helper, Parser};
 use core::fmt::Display;
+use core::ops::Range;
 use std::cell::Cell;
 use std::marker::PhantomData;
 
@@ -198,7 +200,7 @@ impl<S: Style, T: AsRef<str>> StyledBlock for (S, T) {
 ///
 /// Currently, the highlighted version *must* have the same display width as
 /// the original input.
-pub trait Highlighter {
+pub trait Highlighter: Parser {
     /// Takes the currently edited `line` with the cursor `pos`ition and
     /// returns the highlighted version (with ANSI color).
     ///
@@ -310,7 +312,11 @@ impl MatchingBracketHighlighter {
         }
     }
 }
-
+impl Parser for MatchingBracketHighlighter {
+    fn segments(&mut self) -> &mut Vec<(bool, Range<usize>)> {
+        todo!()
+    }
+}
 impl Highlighter for MatchingBracketHighlighter {
     fn highlight<'b, 's: 'b, 'l: 'b>(
         &'s mut self,

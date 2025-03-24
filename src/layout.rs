@@ -21,7 +21,7 @@ impl Ord for Position {
     }
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone, Copy)]
 pub struct Layout {
     /// Prompt Unicode/visible width and height
     pub prompt_size: Position,

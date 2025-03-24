@@ -1,6 +1,7 @@
 //! Unix specific definitions
 #[cfg(feature = "buffer-redux")]
 use buffer_redux::BufReader;
+use core::ops::Range;
 use std::cmp;
 use std::collections::HashMap;
 use std::fs::{File, OpenOptions};
@@ -31,7 +32,7 @@ use crate::highlight::{DisplayOnce, Highlighter};
 use crate::keys::{KeyCode as K, KeyEvent, KeyEvent as E, Modifiers as M};
 use crate::layout::{Layout, Position};
 use crate::line_buffer::LineBuffer;
-use crate::{error, Cmd, ReadlineError, Result};
+use crate::{error, Cmd, Helper, ReadlineError, Result};
 
 /// Unsupported Terminals that don't support RAW mode
 const UNSUPPORTED_TERM: [&str; 3] = ["dumb", "cons25", "emacs"];
@@ -978,8 +979,7 @@ impl Renderer for PosixRenderer {
         write_all(self.out, self.buffer.as_str())?;
         Ok(())
     }
-
-    fn refresh_line<H: Highlighter>(
+    fn refresh_line<H: Highlighter + Helper>(
         &mut self,
         prompt: &str,
         line: &LineBuffer,

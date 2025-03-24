@@ -1,4 +1,5 @@
 //! Tests specific definitions
+use core::ops::Range;
 use std::slice::Iter;
 use std::vec::IntoIter;
 
@@ -9,7 +10,7 @@ use crate::highlight::Highlighter;
 use crate::keys::KeyEvent;
 use crate::layout::{Layout, Position};
 use crate::line_buffer::LineBuffer;
-use crate::{Cmd, Result};
+use crate::{Cmd, Helper, Result};
 
 pub type Buffer = ();
 pub type KeyMap = ();
@@ -100,7 +101,7 @@ impl Renderer for Sink {
         Ok(())
     }
 
-    fn refresh_line<H: Highlighter>(
+    fn refresh_line<H: Highlighter + Helper>(
         &mut self,
         _prompt: &str,
         _line: &LineBuffer,

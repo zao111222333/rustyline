@@ -40,12 +40,14 @@ mod tty;
 mod undo;
 pub mod validate;
 
+use core::ops::Range;
 use std::fmt;
 use std::io::{self, BufRead, Write};
 use std::path::Path;
 use std::result;
 
 use highlight::DisplayOnce;
+use layout::Layout;
 use log::debug;
 #[cfg(feature = "derive")]
 #[cfg_attr(docsrs, doc(cfg(feature = "derive")))]
@@ -489,7 +491,7 @@ fn readline_direct(
     mut reader: impl BufRead,
     mut writer: impl Write,
     validator: &mut impl Validator,
-) -> Result<String> {
+) -> Result<(bool, String)> {
     let mut input = String::new();
 
     loop {
@@ -523,7 +525,7 @@ fn readline_direct(
                 if let Some(msg) = msg {
                     writer.write_all(msg.as_bytes())?;
                 }
-                return Ok(input);
+                return Ok((false, input));
             }
             validate::ValidationResult::Invalid(Some(msg)) => {
                 writer.write_all(msg.as_bytes())?;
@@ -545,13 +547,28 @@ fn readline_direct(
     }
 }
 
+pub trait Parser {
+    fn segments(&mut self) -> &mut Vec<(bool, Range<usize>)>;
+}
+impl Parser for () {
+    fn segments(&mut self) -> &mut Vec<(bool, Range<usize>)> {
+        todo!()
+    }
+}
+
+impl<'h, H: Parser> Parser for &'h mut H {
+    fn segments(&mut self) -> &mut Vec<(bool, Range<usize>)> {
+        (**self).segments()
+    }
+}
+
 /// Syntax specific helper.
 ///
 /// TODO Tokenizer/parser used for both completion, suggestion, highlighting.
 /// (parse current line once)
 pub trait Helper
 where
-    Self: Completer + Hinter + Highlighter + Validator,
+    Self: Completer + Hinter + Highlighter + Validator + Parser,
 {
     /// Update helper when line has been modified.
     ///
@@ -560,8 +577,13 @@ where
     ///
     /// You can put the tokenizer/parser here so that other APIs can directly use
     /// results generate here, and reduce the overhead.
+    ///
+    /// return the ranges of segments
     fn update_after_edit(&mut self, line: &str, pos: usize, forced_refresh: bool) {
         _ = (line, forced_refresh, pos);
+        let segments = self.segments();
+        segments.clear();
+        segments.push((false, 0..line.len()));
     }
 
     /// Update helper when cursor has been moved.
@@ -630,7 +652,11 @@ impl<'h> Context<'h> {
 #[must_use]
 pub struct Editor<H: Helper, I: History> {
     term: Terminal,
+    is_new_input: bool,
+    is_old_input_first_time: bool,
     buffer: Option<Buffer>,
+    segments_buff: String,
+    old_layout: Layout,
     history: I,
     helper: H,
     kill_ring: KillRing,
@@ -644,14 +670,14 @@ pub type DefaultEditor = Editor<(), DefaultHistory>;
 #[allow(clippy::new_without_default)]
 impl<H: Helper> Editor<H, DefaultHistory> {
     /// Create an editor with a helper and the default configuration.
-    /// 
+    ///
     /// Use `new(())` for default Helper.
     pub fn new(helper: H) -> Result<Self> {
         Self::with_config(Config::default(), helper)
     }
 
     /// Create an editor with a specific configuration and a helper.
-    /// 
+    ///
     /// Use `with_config(config,())` for default Helper.
     pub fn with_config(config: Config, helper: H) -> Result<Self> {
         Self::with_history(config, DefaultHistory::with_config(config), helper)
@@ -659,6 +685,10 @@ impl<H: Helper> Editor<H, DefaultHistory> {
 }
 
 impl<H: Helper, I: History> Editor<H, I> {
+    pub fn need_input(&mut self) {
+        self.helper.segments().clear();
+        self.is_new_input = true;
+    }
     /// Create an editor with a custom history impl.
     pub fn with_history(config: Config, history: I, helper: H) -> Result<Self> {
         let term = Terminal::new(
@@ -671,12 +701,16 @@ impl<H: Helper, I: History> Editor<H, I> {
         )?;
         Ok(Self {
             term,
+            is_new_input: true,
+            is_old_input_first_time: false,
             buffer: None,
+            segments_buff: String::new(),
             history,
             helper,
             kill_ring: KillRing::new(60),
             config,
             custom_bindings: Bindings::new(),
+            old_layout: Layout::default(),
         })
     }
 
@@ -686,7 +720,7 @@ impl<H: Helper, I: History> Editor<H, I> {
     /// terminal.
     /// Otherwise (e.g., if `stdin` is a pipe or the terminal is not supported),
     /// it uses file-style interaction.
-    pub fn readline(&mut self, prompt: &str) -> Result<String> {
+    pub fn readline(&mut self, prompt: &str) -> Result<(bool, String)> {
         self.readline_with(prompt, None)
     }
 
@@ -697,11 +731,19 @@ impl<H: Helper, I: History> Editor<H, I> {
     /// The string on the left of the tuple is what will appear to the left of
     /// the cursor and the string on the right is what will appear to the
     /// right of the cursor.
-    pub fn readline_with_initial(&mut self, prompt: &str, initial: (&str, &str)) -> Result<String> {
+    pub fn readline_with_initial(
+        &mut self,
+        prompt: &str,
+        initial: (&str, &str),
+    ) -> Result<(bool, String)> {
         self.readline_with(prompt, Some(initial))
     }
 
-    fn readline_with(&mut self, prompt: &str, initial: Option<(&str, &str)>) -> Result<String> {
+    fn readline_with(
+        &mut self,
+        prompt: &str,
+        initial: Option<(&str, &str)>,
+    ) -> Result<(bool, String)> {
         if self.term.is_unsupported() {
             debug!(target: "rustyline", "unsupported terminal");
             // Write prompt and flush it to stdout
@@ -711,18 +753,35 @@ impl<H: Helper, I: History> Editor<H, I> {
 
             readline_direct(io::stdin().lock(), io::stderr(), &mut self.helper)
         } else if self.term.is_input_tty() {
-            let (original_mode, term_key_map) = self.term.enable_raw_mode()?;
-            let guard = Guard(&original_mode);
-            let user_input: result::Result<String, ReadlineError> =
-                self.readline_edit(prompt, initial, &original_mode, term_key_map);
-            if self.config.auto_add_history() {
-                if let Ok(ref line) = user_input {
-                    self.add_history_entry(line.as_str())?;
-                }
+            if self.is_new_input {
+                let (original_mode, term_key_map) = self.term.enable_raw_mode()?;
+                let guard = Guard(&original_mode);
+                self.segments_buff =
+                    self.readline_edit(prompt, initial, &original_mode, term_key_map)?;
+                self.is_old_input_first_time = true;
+                drop(guard); // disable_raw_mode(original_mode)?;
             }
-            drop(guard); // disable_raw_mode(original_mode)?;
+            let (is_expr, segment) = self.helper.segments().last().unwrap().clone();
+            let user_input = self.segments_buff[segment].to_string();
+            if !self.is_new_input {
+                let mut buffer = String::new();
+                DisplayOnce::fmt(self.helper.highlight_prompt(prompt, true), &mut buffer)?;
+                // display the input line
+                DisplayOnce::fmt(self.helper.highlight(&user_input, 0), &mut buffer)?;
+                let mut out = self.term.create_writer();
+                if self.is_old_input_first_time {
+                    out.clear_rows(&self.old_layout)?;
+                    self.is_old_input_first_time = false;
+                }
+                out.write_and_flush(&buffer)?;
+            }
+            _ = self.helper.segments().pop();
+            self.is_new_input = self.helper.segments().is_empty();
+            if self.config.auto_add_history() {
+                self.add_history_entry(&user_input)?;
+            }
             self.term.writeln()?;
-            user_input
+            Ok((is_expr, user_input))
         } else {
             debug!(target: "rustyline", "stdin is not a tty");
             // Not a tty: read from file / pipe.
@@ -849,6 +908,8 @@ impl<H: Helper, I: History> Editor<H, I> {
             let _ = original_mode; // silent warning
         }
         self.buffer = rdr.unbuffer();
+        self.old_layout = s.layout;
+        self.old_layout.end.row += 1;
         Ok(s.line.into_string())
     }
 
@@ -888,7 +949,7 @@ impl<H: Helper, I: History> Editor<H, I> {
     }
 
     /// This will do nothing and will remove in future version.
-    /// 
+    ///
     /// Now we should specify the helper when create the editor
     #[deprecated = "specify the helper when crate the editor"]
     pub fn set_helper(&mut self) {}
@@ -1028,9 +1089,9 @@ impl<'a, H: Helper, I: History> Iterator for Iter<'a, H, I> {
     fn next(&mut self) -> Option<Result<String>> {
         let readline = self.editor.readline(self.prompt);
         match readline {
-            Ok(l) => Some(Ok(l)),
+            Ok((_, l)) => Some(Ok(l)),
             Err(ReadlineError::Eof) => None,
-            e @ Err(_) => Some(e),
+            Err(e) => Some(Err(e)),
         }
     }
 }

@@ -27,7 +27,7 @@ fn main() -> Result<()> {
     );
 
     loop {
-        let line = rl.readline("> ")?;
+        let (is_expr, line) = rl.readline("> ")?;
         println!("Num: {line}");
     }
 }

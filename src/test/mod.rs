@@ -10,7 +10,9 @@ use crate::keymap::{Bindings, Cmd, InputState};
 use crate::keys::{KeyCode as K, KeyEvent, KeyEvent as E, Modifiers as M};
 use crate::tty::Sink;
 use crate::validate::Validator;
-use crate::{apply_backspace_direct, readline_direct, Context, DefaultEditor, Helper, Result};
+use crate::{
+    apply_backspace_direct, readline_direct, Context, DefaultEditor, Helper, Parser, Result,
+};
 
 mod common;
 mod emacs;
@@ -54,7 +56,11 @@ impl Hinter for SimpleCompleter {
         None
     }
 }
-
+impl Parser for SimpleCompleter {
+    fn segments(&mut self) -> &mut Vec<(bool, std::ops::Range<usize>)> {
+        todo!()
+    }
+}
 impl Helper for SimpleCompleter {}
 impl Highlighter for SimpleCompleter {}
 impl Validator for SimpleCompleter {}
@@ -104,7 +110,7 @@ fn complete_symbol() {
 // `expected_line`: line after enter key
 fn assert_line(mode: EditMode, keys: &[KeyEvent], expected_line: &str) {
     let mut editor = init_editor(mode, keys);
-    let actual_line = editor.readline(">>").unwrap();
+    let (_, actual_line) = editor.readline(">>").unwrap();
     assert_eq!(expected_line, actual_line);
 }
 
@@ -118,7 +124,7 @@ fn assert_line_with_initial(
     expected_line: &str,
 ) {
     let mut editor = init_editor(mode, keys);
-    let actual_line = editor.readline_with_initial(">>", initial).unwrap();
+    let (_, actual_line) = editor.readline_with_initial(">>", initial).unwrap();
     assert_eq!(expected_line, actual_line);
 }
 
@@ -127,7 +133,7 @@ fn assert_line_with_initial(
 // `expected`: line status before enter key: strings before and after cursor
 fn assert_cursor(mode: EditMode, initial: (&str, &str), keys: &[KeyEvent], expected: (&str, &str)) {
     let mut editor = init_editor(mode, keys);
-    let actual_line = editor.readline_with_initial("", initial).unwrap();
+    let (_, actual_line) = editor.readline_with_initial("", initial).unwrap();
     assert_eq!(expected.0.to_owned() + expected.1, actual_line);
     assert_eq!(expected.0.len(), editor.term.cursor);
 }
@@ -146,7 +152,7 @@ fn assert_history(
     for entry in entries {
         editor.history.add(entry).unwrap();
     }
-    let actual_line = editor.readline(prompt).unwrap();
+    let (_, actual_line) = editor.readline(prompt).unwrap();
     assert_eq!(expected.0.to_owned() + expected.1, actual_line);
     if prompt.is_empty() {
         assert_eq!(expected.0.len(), editor.term.cursor);
@@ -195,5 +201,5 @@ fn test_readline_direct() {
         &write_buf,
         b"Mismatched brackets: '[' is not properly closed"
     );
-    assert_eq!(&output.unwrap(), "([\n\n\r\n])");
+    assert_eq!(&output.unwrap().1, "([\n\n\r\n])");
 }

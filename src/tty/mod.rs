@@ -1,5 +1,7 @@
 //! This module implements and describes common TTY methods & traits
 
+use core::ops::Range;
+
 use unicode_width::UnicodeWidthStr;
 
 use crate::config::{Behavior, BellStyle, ColorMode, Config};
@@ -7,7 +9,7 @@ use crate::highlight::Highlighter;
 use crate::keys::KeyEvent;
 use crate::layout::{Layout, Position};
 use crate::line_buffer::LineBuffer;
-use crate::{Cmd, Result};
+use crate::{Cmd, Helper, Result};
 
 /// Terminal state
 pub trait RawMode: Sized {
@@ -47,7 +49,7 @@ pub trait Renderer {
 
     /// Display `prompt`, line and cursor in terminal output
     #[allow(clippy::too_many_arguments)]
-    fn refresh_line<H: Highlighter>(
+    fn refresh_line<H: Highlighter + Helper>(
         &mut self,
         prompt: &str,
         line: &LineBuffer,
@@ -132,7 +134,7 @@ impl<'a, R: Renderer + ?Sized> Renderer for &'a mut R {
         (**self).move_cursor(old, new)
     }
 
-    fn refresh_line<H: Highlighter>(
+    fn refresh_line<H: Highlighter + Helper>(
         &mut self,
         prompt: &str,
         line: &LineBuffer,
