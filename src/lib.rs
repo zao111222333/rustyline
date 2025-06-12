@@ -547,7 +547,9 @@ fn readline_direct(
     }
 }
 
+/// return the parsed code block(s) / segments
 pub trait Parser {
+    /// return the parsed code block(s) / segments
     fn segments(&mut self) -> &mut Vec<(bool, Range<usize>)>;
 }
 impl Parser for () {
@@ -579,11 +581,11 @@ where
     /// results generate here, and reduce the overhead.
     ///
     /// return the ranges of segments
-    fn update_after_edit(&mut self, line: &str, pos: usize, forced_refresh: bool) {
-        _ = (line, forced_refresh, pos);
+    fn update_after_edit(&mut self, lines: &str, pos: usize, forced_refresh: bool) {
+        _ = (lines, forced_refresh, pos);
         let segments = self.segments();
         segments.clear();
-        segments.push((false, 0..line.len()));
+        segments.push((false, 0..lines.len()));
     }
 
     /// Update helper when cursor has been moved.
@@ -593,8 +595,8 @@ where
     ///
     /// You can put the tokenizer/parser here so that other APIs can directly use
     /// results generate here, and reduce the overhead.
-    fn update_after_move_cursor(&mut self, line: &str, pos: usize) {
-        _ = (line, pos);
+    fn update_after_move_cursor(&mut self, lines: &str, pos: usize) {
+        _ = (lines, pos);
     }
 
     /// Return the width of continuation prompt,
@@ -685,6 +687,8 @@ impl<H: Helper> Editor<H, DefaultHistory> {
 }
 
 impl<H: Helper, I: History> Editor<H, I> {
+    /// set to need input, it ususally called when one segment encounter a error,
+    /// and we need to clean the rest segments
     pub fn need_input(&mut self) {
         self.helper.segments().clear();
         self.is_new_input = true;

@@ -1,7 +1,6 @@
 //! Syntax highlighting
 
-use crate::config::CompletionType;
-use crate::{Helper, Parser};
+use crate::{config::CompletionType, Parser};
 use core::fmt::Display;
 use core::ops::Range;
 use std::cell::Cell;

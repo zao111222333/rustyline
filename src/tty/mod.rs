@@ -1,7 +1,4 @@
 //! This module implements and describes common TTY methods & traits
-
-use core::ops::Range;
-
 use unicode_width::UnicodeWidthStr;
 
 use crate::config::{Behavior, BellStyle, ColorMode, Config};

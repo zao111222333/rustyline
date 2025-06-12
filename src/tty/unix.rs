@@ -1,7 +1,6 @@
 //! Unix specific definitions
 #[cfg(feature = "buffer-redux")]
 use buffer_redux::BufReader;
-use core::ops::Range;
 use std::cmp;
 use std::collections::HashMap;
 use std::fs::{File, OpenOptions};
